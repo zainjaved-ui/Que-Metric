@@ -1,0 +1,307 @@
+@import "tailwindcss";
+
+/* Sidebar navigation scrollbar */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: #1A3F5C;
+  border-radius: 9999px;
+}
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #1A3F5C transparent;
+}
+
+/* Custom animations for club joining effects */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Modal animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* TournamentDashboard Styling */
+.tournament-dashboard {
+  @apply p-6;
+}
+
+.dashboard-header {
+  @apply mb-8 pb-6 border-b border-gray-200 flex justify-between items-start;
+}
+
+.header-content h2 {
+  @apply text-3xl font-bold text-gray-900 mb-3;
+}
+
+.header-badges {
+  @apply flex gap-2 flex-wrap;
+}
+
+.badge {
+  @apply inline-block px-3 py-1 rounded-full text-sm font-semibold;
+}
+
+.header-actions {
+  @apply flex gap-3 flex-wrap justify-end;
+}
+
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-200 text-gray-900 rounded-lg font-medium hover:bg-gray-300 transition;
+}
+
+.btn-close {
+  @apply px-3 py-2 text-2xl text-gray-500 hover:text-gray-900 font-bold transition;
+}
+
+.btn-icon {
+  @apply p-2 rounded transition;
+}
+
+.btn-success {
+  @apply bg-green-100 text-green-700 hover:bg-green-200;
+}
+
+.btn-danger {
+  @apply bg-red-100 text-red-700 hover:bg-red-200;
+}
+
+.btn-text {
+  @apply text-blue-600 hover:text-blue-800 font-medium transition;
+}
+
+/* Join Code Display */
+.join-code-display {
+  @apply mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg;
+}
+
+.join-code-content {
+  @apply space-y-3;
+}
+
+.join-code-content h4 {
+  @apply text-lg font-bold text-gray-900;
+}
+
+.join-code-box {
+  @apply flex gap-2 items-center p-3 bg-white border border-blue-300 rounded;
+}
+
+.code {
+  @apply font-mono text-lg font-bold text-blue-600 flex-1;
+}
+
+.help-text {
+  @apply text-sm text-gray-600;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+  @apply flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto;
+}
+
+.tab-button {
+  @apply flex items-center gap-2 px-4 py-3 font-medium text-gray-700 border-b-2 border-transparent hover:border-blue-600 hover:text-blue-600 transition whitespace-nowrap;
+}
+
+.tab-button.active {
+  @apply text-blue-600 border-blue-600;
+}
+
+.tab-button svg {
+  @apply w-5 h-5;
+}
+
+/* Tab Content */
+.tab-content {
+  @apply min-h-96;
+}
+
+.loading {
+  @apply text-center py-8 text-gray-500;
+}
+
+.tab-panel {
+  @apply space-y-6;
+}
+
+.tab-title {
+  @apply text-2xl font-bold text-gray-900;
+}
+
+/* Overview Grid */
+.overview-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4;
+}
+
+.overview-card {
+  @apply p-4 bg-gray-50 border border-gray-200 rounded-lg;
+}
+
+.overview-card h4 {
+  @apply text-lg font-bold text-gray-900 mb-3;
+}
+
+.overview-card dl {
+  @apply space-y-2;
+}
+
+.overview-card dt {
+  @apply text-sm font-semibold text-gray-600;
+}
+
+.overview-card dd {
+  @apply text-gray-900 font-medium;
+}
+
+.stat-large {
+  @apply text-4xl font-bold text-blue-600 mb-2;
+}
+
+/* Filter Controls */
+.filter-controls {
+  @apply mb-4;
+}
+
+.input {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+/* Participants Table */
+.participants-table {
+  @apply w-full border-collapse;
+}
+
+.participants-table thead {
+  @apply bg-gray-100 border-b-2 border-gray-300;
+}
+
+.participants-table th {
+  @apply px-4 py-3 text-left font-bold text-gray-700;
+}
+
+.participants-table td {
+  @apply px-4 py-3 border-b border-gray-200;
+}
+
+.participants-table tbody tr:hover {
+  @apply bg-gray-50;
+}
+
+.actions {
+  @apply flex gap-2;
+}
+
+/* Bracket & Empty State */
+.empty-state {
+  @apply text-center py-12 space-y-4;
+}
+
+.empty-state p {
+  @apply text-gray-600 text-lg;
+}
+
+.bracket-placeholder {
+  @apply p-6 bg-gray-50 border border-gray-200 rounded-lg space-y-3;
+}
+
+.bracket-placeholder h4 {
+  @apply text-xl font-bold text-gray-900;
+}
+
+.bracket-info ul {
+  @apply list-disc list-inside space-y-2 text-gray-600 mt-3;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  @apply fixed inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.modal-content {
+  @apply bg-white rounded-xl p-6 max-w-lg w-full shadow-2xl max-h-[80vh] overflow-y-auto;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

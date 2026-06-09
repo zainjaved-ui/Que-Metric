@@ -1,0 +1,19 @@
+Client/.env
+Server/.env
+webhook/.env
+# Editor / AI tools
+Client/.claude/
+
+# Archives
+Server/Server.zip
+.claude/
+Server/*.zip
+
+
+Quemetrics_Backend/nul
+nul
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat
+node_modules
