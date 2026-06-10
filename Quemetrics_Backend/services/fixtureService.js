@@ -57,7 +57,7 @@ async function processOverdueFixtures(leagueId) {
 
                     if (walkoverRule.rule === 'admin') {
                         // Admin decides: Mark as overdue but don't auto-complete
-                        fixture.status = 'scheduled'; 
+                        fixture.status = 'scheduled';
                         fixture.resultData = {
                             ...(fixture.resultData || {}),
                             isOverdue: true,
@@ -70,7 +70,7 @@ async function processOverdueFixtures(leagueId) {
                         const defaultScore = bestOf;
 
                         if (walkoverRule.rule === 'autoBestOf' || walkoverRule.rule === 'auto3-0') {
-                            score1 = defaultScore; score2 = 0; 
+                            score1 = defaultScore; score2 = 0;
                         } else if (walkoverRule.rule === 'auto2-0') {
                             score1 = 2; score2 = 0;
                         } else if (walkoverRule.rule === 'auto5-0') {
@@ -166,9 +166,9 @@ module.exports = {
  * Handle fixtures when a player withdraws from a league.
  * Converts upcoming matches to byes and advances opponents in knockouts.
  */
-async function handlePlayerWithdrawalFromFixtures(leagueId, playerId) {
+async function handlePlayerWithdrawalFromFixtures(leagueId, playerId, dropoutRule = 'whitewash') {
     const { Fixture, MatchResult, League } = require('../models');
-    
+
     // Find all incomplete fixtures for this player in this league
     const fixtures = await Fixture.findAll({
         where: {
@@ -194,18 +194,20 @@ async function handlePlayerWithdrawalFromFixtures(leagueId, playerId) {
             });
 
             // Create a MatchResult for the walkover/bye record
-            await MatchResult.create({
-                fixtureId: fixture.id,
-                leagueId,
-                matchType: 'league',
-                sport: league.sport,
-                submittedBy: opponentId, // Fix: submittedBy cannot be null
-                player1Id: fixture.player1Id,
-                player2Id: fixture.player2Id,
-                winnerId: opponentId,
-                isWalkover: true,
-                resultStatus: 'Confirmed',
-                notes: 'Automated bye due to player withdrawal.'
+            await MatchResult.findOrCreate({
+                where: { fixtureId: fixture.id },
+                defaults: {
+                    leagueId,
+                    matchType: 'league',
+                    sport: league.sport,
+                    submittedBy: opponentId, // Fix: submittedBy cannot be null
+                    player1Id: fixture.player1Id,
+                    player2Id: fixture.player2Id,
+                    winnerId: opponentId,
+                    isWalkover: true,
+                    resultStatus: 'Confirmed',
+                    notes: JSON.stringify({ isWalkover: true, withdrawalRule: dropoutRule, reason: 'Automated bye due to player withdrawal.' })
+                }
             });
 
             // If it's a knockout stage, advance the opponent to the next round
@@ -224,7 +226,7 @@ async function handlePlayerWithdrawalFromFixtures(leagueId, playerId) {
  */
 async function advanceKnockoutWinner(fixture) {
     if (!fixture.winnerId) return;
-    
+
     const nextR = (fixture.round || 1) + 1;
     const nextIdx = Math.floor(fixture.matchIndex / 2);
     const isP1 = fixture.matchIndex % 2 === 0;

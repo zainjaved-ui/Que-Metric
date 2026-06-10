@@ -560,6 +560,7 @@ exports.withdrawPlayer = async (req, res) => {
   try {
     const { userId } = req.user;
     const { leagueId, leaguePlayerId } = req.params;
+    const { dropoutRule = 'whitewash' } = req.body;
 
     const organization = await Organization.findOne({ where: { userId } });
     if (!organization) {
@@ -586,10 +587,16 @@ exports.withdrawPlayer = async (req, res) => {
     await leaguePlayer.update({ status: "withdrawn" });
 
     // Handle upcoming fixtures (mark as byes for opponents and advance them if knockout)
-    await fixtureService.handlePlayerWithdrawalFromFixtures(leagueId, leaguePlayer.playerId);
+    await fixtureService.handlePlayerWithdrawalFromFixtures(leagueId, leaguePlayer.playerId, dropoutRule);
 
     // Trigger standings recalculation (it will respect withdrawalBehaviour)
     await standingsService.updateLeagueStandings(leagueId);
+
+    // Update league total players count
+    const activeCount = await LeaguePlayer.count({
+      where: { leagueId, status: { [Op.ne]: 'withdrawn' } }
+    });
+    await League.update({ totalPlayers: activeCount }, { where: { id: leagueId } });
 
     res.json({
       success: true,

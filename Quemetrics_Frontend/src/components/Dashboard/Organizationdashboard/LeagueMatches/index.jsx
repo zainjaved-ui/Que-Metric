@@ -47,6 +47,7 @@ import Pool from "../../../../assets/pool.png";
 import StandingsOverrideModal from "../LeagueManagement/StandingsOverrideModal";
 import PendingWalkoverModal from "./PendingWalkoverModal";
 import LeagueBracketView, { ChampionBanner } from "./LeagueBracketView";
+import WithdrawPlayerModal from "./WithdrawPlayerModal";
 
 // Helper functions (moved from service)
 const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => {
@@ -93,7 +94,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       }
     }
     const isOrganizerScheduled = resDataObj?.isOrganizerScheduled || fixture.additionalData?.resultData?.isOrganizerScheduled || fixture.additionalData?.isOrganizerScheduled;
-    
+
     let hasExplicitDate = isOrganizerScheduled;
     if (!hasExplicitDate && fixture.scheduledDate && league?.leagueStartDate) {
       try {
@@ -106,7 +107,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
             hasExplicitDate = true;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (matchDate === "TBA" && hasExplicitDate && fixture.scheduledDate) {
@@ -129,7 +130,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
     };
 
     const homeName = getPlayerName(fixture.player1, 'TBD');
-    const awayName = fixture.status === 'bye' ? 'BYE' : getPlayerName(fixture.player2, 'TBD');
+    const awayName = getPlayerName(fixture.player2, 'TBD');
 
     // Extract venue/table name from first booking or additional data if available
     let tableName = "TBA";
@@ -164,20 +165,20 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       if (Array.isArray(fixture.resultData)) {
         frameDetails = fixture.resultData;
       } else if (typeof fixture.resultData === 'object' && fixture.resultData !== null) {
-        frameDetails = fixture.resultData.frameDetails || 
-                       fixture.resultData.snookerFrameDetails || 
-                       fixture.resultData.poolRackDetails || 
-                       fixture.resultData.pookerFrameDetails || [];
+        frameDetails = fixture.resultData.frameDetails ||
+          fixture.resultData.snookerFrameDetails ||
+          fixture.resultData.poolRackDetails ||
+          fixture.resultData.pookerFrameDetails || [];
       } else if (typeof fixture.resultData === 'string') {
         try {
           const parsed = JSON.parse(fixture.resultData);
           if (Array.isArray(parsed)) {
             frameDetails = parsed;
           } else if (typeof parsed === 'object' && parsed !== null) {
-            frameDetails = parsed.frameDetails || 
-                           parsed.snookerFrameDetails || 
-                           parsed.poolRackDetails || 
-                           parsed.pookerFrameDetails || [];
+            frameDetails = parsed.frameDetails ||
+              parsed.snookerFrameDetails ||
+              parsed.poolRackDetails ||
+              parsed.pookerFrameDetails || [];
           }
         } catch (e) {
           frameDetails = [];
@@ -200,13 +201,13 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
 
     // Identify walkover/forfeit
     const isWalkover = mr.isWalkover === true ||
-                       mr.isWalkover === 'true' ||
-                       !!mr.walkoverScore ||
-                       fixture.isWalkover === true ||
-                       fixture.isWalkover === 'true' ||
-                       !!(resDataObj?.isWalkover || resDataObj?.isManualWalkover || resDataObj?.isAutoForfeit || resDataObj?.walkoverApprovedAt || resDataObj?.walkoverConfirmed) ||
-                       fixture.status === 'walkover' ||
-                       fixture.detailedStatus === 'WALKOVER';
+      mr.isWalkover === 'true' ||
+      !!mr.walkoverScore ||
+      fixture.isWalkover === true ||
+      fixture.isWalkover === 'true' ||
+      !!(resDataObj?.isWalkover || resDataObj?.isManualWalkover || resDataObj?.isAutoForfeit || resDataObj?.walkoverApprovedAt || resDataObj?.walkoverConfirmed) ||
+      fixture.status === 'walkover' ||
+      fixture.detailedStatus === 'WALKOVER';
 
     // Identify whitewash
     const isDraw = !isWalkover && fixture.status === 'completed' && (() => {
@@ -375,15 +376,15 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
         {/* Player 1 */}
         <div className="flex-1 flex flex-col items-end text-right min-w-0">
           <span className={`text-sm md:text-[15px] font-black truncate w-full transition-colors ${(isCompleted && (() => {
-              const [s1, s2] = (match.score || "0-0").split(/[- :]/).map(s => parseInt(s) || 0);
-              // If scores are different, use them as ground truth
-              if (s1 !== s2) return s1 > s2;
-              // If scores are same (tie-break/forfeit), use winnerId
-              if (match.winnerId && match.additionalData?.player1Id) {
-                return String(match.winnerId) === String(match.additionalData.player1Id);
-              }
-              return false;
-            })()) || (isBye && match.homeTeam && match.homeTeam !== 'TBD' && match.homeTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
+            const [s1, s2] = (match.score || "0-0").split(/[- :]/).map(s => parseInt(s) || 0);
+            // If scores are different, use them as ground truth
+            if (s1 !== s2) return s1 > s2;
+            // If scores are same (tie-break/forfeit), use winnerId
+            if (match.winnerId && match.additionalData?.player1Id) {
+              return String(match.winnerId) === String(match.additionalData.player1Id);
+            }
+            return false;
+          })()) || (isBye && match.homeTeam && match.homeTeam !== 'TBD' && match.homeTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
             }`}>
             {match.homeTeam}
           </span>
@@ -391,17 +392,17 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
           <div className="flex items-center gap-1 mt-0.5">
             {champion && leagueStatus === 'completed' && (match.player1?.id === champion.playerId || match.additionalData?.player1Id === champion.playerId) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-yellow-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-yellow-50 rounded border border-yellow-100">
-                <FaCrown className="text-[6px]"/> Champion
+                <FaCrown className="text-[6px]" /> Champion
               </span>
             )}
             {leagueStatus === 'completed' && ['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) && match.player1 && promoRegInfo?.promoted?.some(p => p.player?.id === match.player1?.id || p.playerId === (match.additionalData?.player1Id || match.player1?.id)) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-green-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-green-50 rounded border border-green-100">
-                <FaStar className="text-[6px]"/> Promoted
+                <FaStar className="text-[6px]" /> Promoted
               </span>
             )}
             {leagueStatus === 'completed' && ['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) && match.player1 && promoRegInfo?.relegated?.some(p => p.player?.id === match.player1?.id || p.playerId === (match.additionalData?.player1Id || match.player1?.id)) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-red-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-red-50 rounded border border-red-100">
-                <FaArrowDown className="text-[6px]"/> Relegated
+                <FaArrowDown className="text-[6px]" /> Relegated
               </span>
             )}
           </div>
@@ -416,12 +417,12 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
                 {match.score}
               </div>
               <div className={`mt-2 text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border ${match.detailedStatus === 'WALKOVER' ? 'bg-orange-50 text-orange-600 border-orange-100 shadow-sm shadow-orange-100' :
-                  match.detailedStatus === 'PENDING APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
-                    match.detailedStatus === 'FORFEIT' ? 'bg-red-50 text-red-600 border-red-100 shadow-sm shadow-red-100' :
-                      match.detailedStatus === 'DRAW' ? 'bg-teal-50 text-teal-600 border-teal-100 shadow-sm shadow-teal-100' :
-                        match.detailedStatus === 'WHITEWASH' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm shadow-indigo-100' :
-                          match.detailedStatus === 'TIE-BREAK' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
-                            'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'
+                match.detailedStatus === 'PENDING APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
+                  match.detailedStatus === 'FORFEIT' ? 'bg-red-50 text-red-600 border-red-100 shadow-sm shadow-red-100' :
+                    match.detailedStatus === 'DRAW' ? 'bg-teal-50 text-teal-600 border-teal-100 shadow-sm shadow-teal-100' :
+                      match.detailedStatus === 'WHITEWASH' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm shadow-indigo-100' :
+                        match.detailedStatus === 'TIE-BREAK' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
+                          'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'
                 }`}>
                 {match.detailedStatus || 'COMPLETE'}
               </div>
@@ -433,16 +434,21 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
                   PENDING APPROVAL
                 </div>
               )}
-              {match.isWalkover && (
+              {match.isWalkover && match.status !== 'bye' && (
                 <div className="text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border bg-orange-50 text-orange-600 border-orange-100 shadow-sm shadow-orange-100">
                   WALKOVER
                 </div>
               )}
+              {((match.isWalkover && match.status === 'bye') || match.detailedStatus === 'BYE') && (
+                <div className="text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border bg-gray-50 text-gray-500 border-gray-200 shadow-sm">
+                  BYE
+                </div>
+              )}
               {match.detailedStatus && match.detailedStatus !== 'SCHEDULED' && !match.isWalkover && (
                 <div className={`text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border ${match.detailedStatus === 'READY TO PLAY' ? 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm shadow-blue-100' :
-                    match.detailedStatus === 'ONGOING' ? 'bg-yellow-50 text-yellow-600 border-yellow-100 shadow-sm shadow-yellow-100' :
-                      isBye ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100' :
-                        'bg-gray-50 text-gray-400 border-gray-100'
+                  match.detailedStatus === 'ONGOING' ? 'bg-yellow-50 text-yellow-600 border-yellow-100 shadow-sm shadow-yellow-100' :
+                    isBye ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100' :
+                      'bg-gray-50 text-gray-400 border-gray-100'
                   }`}>
                   {match.detailedStatus}
                 </div>
@@ -454,15 +460,15 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
         {/* Player 2 */}
         <div className="flex-1 flex flex-col items-start text-left min-w-0">
           <span className={`text-sm md:text-[15px] font-black truncate w-full transition-colors ${(isCompleted && (() => {
-              const [s1, s2] = (match.score || "0-0").split(/[- :]/).map(s => parseInt(s) || 0);
-              // If scores are different, use them as ground truth
-              if (s1 !== s2) return s2 > s1;
-              // If scores are same (tie-break/forfeit), use winnerId
-              if (match.winnerId && match.additionalData?.player2Id) {
-                return String(match.winnerId) === String(match.additionalData.player2Id);
-              }
-              return false;
-            })()) || (isBye && match.awayTeam && match.awayTeam !== 'TBD' && match.awayTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
+            const [s1, s2] = (match.score || "0-0").split(/[- :]/).map(s => parseInt(s) || 0);
+            // If scores are different, use them as ground truth
+            if (s1 !== s2) return s2 > s1;
+            // If scores are same (tie-break/forfeit), use winnerId
+            if (match.winnerId && match.additionalData?.player2Id) {
+              return String(match.winnerId) === String(match.additionalData.player2Id);
+            }
+            return false;
+          })()) || (isBye && match.awayTeam && match.awayTeam !== 'TBD' && match.awayTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
             }`}>
             {match.awayTeam}
           </span>
@@ -470,17 +476,17 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
           <div className="flex items-center gap-1 mt-0.5">
             {champion && leagueStatus === 'completed' && (match.player2?.id === champion.playerId || match.additionalData?.player2Id === champion.playerId) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-yellow-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-yellow-50 rounded border border-yellow-100">
-                <FaCrown className="text-[6px]"/> Champion
+                <FaCrown className="text-[6px]" /> Champion
               </span>
             )}
             {leagueStatus === 'completed' && ['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) && match.player2 && promoRegInfo?.promoted?.some(p => p.player?.id === match.player2?.id || p.playerId === (match.additionalData?.player2Id || match.player2?.id)) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-green-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-green-50 rounded border border-green-100">
-                <FaStar className="text-[6px]"/> Promoted
+                <FaStar className="text-[6px]" /> Promoted
               </span>
             )}
             {leagueStatus === 'completed' && ['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) && match.player2 && promoRegInfo?.relegated?.some(p => p.player?.id === match.player2?.id || p.playerId === (match.additionalData?.player2Id || match.player2?.id)) && (
               <span className="flex items-center gap-0.5 text-[7px] font-black text-red-600 tracking-tighter uppercase whitespace-nowrap px-1 bg-red-50 rounded border border-red-100">
-                <FaArrowDown className="text-[6px]"/> Relegated
+                <FaArrowDown className="text-[6px]" /> Relegated
               </span>
             )}
           </div>
@@ -535,11 +541,10 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
             <button
               onClick={() => onWalkover(match)}
               disabled={isPendingConfirmation}
-              className={`px-3 py-2 rounded-xl transition-all shadow-sm ${
-                isPendingConfirmation 
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                  : 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white'
-              }`}
+              className={`px-3 py-2 rounded-xl transition-all shadow-sm ${isPendingConfirmation
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white'
+                }`}
               title={isPendingConfirmation ? "Awaiting score confirmation" : "Record Walkover"}
             >
               <span className="text-[10px] font-black uppercase tracking-tighter">Walkover</span>
@@ -557,6 +562,7 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedPlayerForOverride, setSelectedPlayerForOverride] = useState(null);
+  const [withdrawTarget, setWithdrawTarget] = useState(null);
   const { getLeagueStandings, overridePlayerStandings, withdrawPlayer } = useContext(LeagueContext);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -614,19 +620,22 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
     }
   };
 
-  const handleWithdraw = async (leaguePlayer) => {
-    if (window.confirm(`Are you sure you want to withdraw ${leaguePlayer.player?.name} from the league?`)) {
-      setActionLoading(true);
-      try {
-        const result = await withdrawPlayer(leagueId, leaguePlayer.id);
-        if (result.success) {
-          await fetchStandings();
-        } else {
-          alert(result.error);
-        }
-      } finally {
-        setActionLoading(false);
+  const handleWithdraw = (leaguePlayer) => {
+    setWithdrawTarget(leaguePlayer);
+  };
+
+  const handleWithdrawConfirm = async (leaguePlayer, dropoutRule) => {
+    setActionLoading(true);
+    try {
+      const result = await withdrawPlayer(leagueId, leaguePlayer.id, dropoutRule);
+      if (result.success) {
+        await fetchStandings();
+      } else {
+        alert(result.error || 'Failed to withdraw player');
       }
+    } finally {
+      setActionLoading(false);
+      setWithdrawTarget(null);
     }
   };
 
@@ -791,24 +800,24 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
                         (leagueStatus === 'completed' && ['Promoted', 'Qualified', 'Relegated'].includes(player.title)) ||
                         ['Champion', 'Runner-up'].includes(player.title)
                       ) && (
-                        // Hide Champion/Runner-up for Divisional Formats (RR, Swiss, H&A) to prioritize Promo/Reg badges
-                        !( ['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) && 
-                           ['Champion', 'Runner-up'].includes(player.title) )
-                      ) && (
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${player.title === 'Champion'
+                          // Hide Champion/Runner-up for Divisional Formats (RR, Swiss, H&A) to prioritize Promo/Reg badges
+                          !(['round_robin', 'roundrobin', 'homeaway', 'home_away', 'swiss'].includes(effectiveFormat.toLowerCase()) &&
+                            ['Champion', 'Runner-up'].includes(player.title))
+                        ) && (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${player.title === 'Champion'
                             ? (leagueStatus === 'completed' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-blue-100 text-blue-800 border-blue-200')
                             : player.title === 'Runner-up' ? 'bg-gray-100 text-gray-800 border-gray-200'
-                            : (player.title === 'Promoted' || player.title === 'Qualified') ? 'bg-green-100 text-green-800 border-green-200'
-                            : player.title === 'Relegated' ? 'bg-red-100 text-red-800 border-red-200'
-                            : 'bg-gray-100 text-gray-800 border-gray-200'
-                          }`}>
-                          {player.title === 'Champion' ? <FaTrophy className={leagueStatus === 'completed' ? 'text-yellow-600' : 'text-blue-600'} /> : 
-                           (player.title === 'Promoted' || player.title === 'Qualified') ? <FaStar className="text-green-600" /> :
-                           player.title === 'Relegated' ? <FaArrowDown className="text-red-600" /> : null}
-                          {player.title === 'Champion' ? (leagueStatus === 'completed' ? 'Champion' : 'Current Leader') : player.title}
-                        </span>
-                      )}
-                      
+                              : (player.title === 'Promoted' || player.title === 'Qualified') ? 'bg-green-100 text-green-800 border-green-200'
+                                : player.title === 'Relegated' ? 'bg-red-100 text-red-800 border-red-200'
+                                  : 'bg-gray-100 text-gray-800 border-gray-200'
+                            }`}>
+                            {player.title === 'Champion' ? <FaTrophy className={leagueStatus === 'completed' ? 'text-yellow-600' : 'text-blue-600'} /> :
+                              (player.title === 'Promoted' || player.title === 'Qualified') ? <FaStar className="text-green-600" /> :
+                                player.title === 'Relegated' ? <FaArrowDown className="text-red-600" /> : null}
+                            {player.title === 'Champion' ? (leagueStatus === 'completed' ? 'Champion' : 'Current Leader') : player.title}
+                          </span>
+                        )}
+
                       {player.status !== 'withdrawn' && (
                         <>
                           {/* Promotion/Qualification Tags (Only for non-tournament formats) */}
@@ -818,7 +827,7 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
                               {effectiveFormat === 'groupsKnockout' ? 'Qualified' : 'Promoted'}
                             </span>
                           )}
-                          
+
                           {/* Relegation Tag (Shown for Round Robin formats) */}
                           {leagueStatus === 'completed' && !['knockout', 'groupsKnockout'].includes(effectiveFormat) && relegationCount > 0 && idx >= standings.length - relegationCount && (!player.title || player.title !== 'Relegated') && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase border bg-red-50 text-red-700 border-red-100 ml-1">
@@ -830,8 +839,8 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
                           {/* Default Champion Tag (For Round Robin / Swiss / Groups - based on rank 1) */}
                           {idx === 0 && !['knockout', 'groupsKnockout', 'round_robin', 'roundRobin', 'homeAway', 'homeaway', 'swiss'].includes(effectiveFormat) && promotionCount === 0 && (
                             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${leagueStatus === 'completed'
-                                ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                                : 'bg-blue-100 text-blue-800 border-blue-200'
+                              ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                              : 'bg-blue-100 text-blue-800 border-blue-200'
                               }`}>
                               <FaTrophy className={leagueStatus === 'completed' ? 'text-yellow-600' : 'text-blue-600'} />
                               {leagueStatus === 'completed' ? 'Champion' : 'Current Leader'}
@@ -909,6 +918,13 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
         onClose={() => setSelectedPlayerForOverride(null)}
         player={selectedPlayerForOverride}
         onOverride={handleOverride}
+      />
+      <WithdrawPlayerModal
+        isOpen={!!withdrawTarget}
+        onClose={() => setWithdrawTarget(null)}
+        player={withdrawTarget}
+        leagueId={leagueId}
+        onConfirm={handleWithdrawConfirm}
       />
     </div>
   );
@@ -1092,16 +1108,16 @@ export default function LeagueMatches() {
         if (standings.length > 0) {
           // Skip withdrawn players when determining the champion from standings
           const topPlayer = standings.find(p => p.status !== 'withdrawn') || standings[0];
-          
+
           if (!isKnockoutFormat) {
             // For Round Robin, store promotion/relegation info
             const structure = selectedLeague.structure || {};
             const pCount = structure.promotionCount || structure.divisions?.promotions || structure.groups?.qualifiers || 0;
             const rCount = structure.relegationCount || structure.divisions?.relegations || 0;
-            
+
             const promoted = standings.slice(0, pCount).filter(p => p.status !== 'withdrawn');
             const relegated = rCount > 0 ? standings.slice(-rCount).filter(p => p.status !== 'withdrawn') : [];
-            
+
             setPromoRegInfo({ promoted, relegated });
             // For Round Robin, we don't set 'champion' state if user wants to prioritize Promo/Reg
             // But we keep it if they want to show "Winner" as well. 
@@ -1302,13 +1318,13 @@ export default function LeagueMatches() {
       if (targetLeague) {
         console.log(`[LeagueMatches] 🎯 Deep-linking to league: ${targetLeague.name} (ID: ${targetLeague.id})`);
         setSelectedLeague(targetLeague);
-        
+
         // Auto-select club and game to populate dropdowns correctly if they exist
         if (clubs.length > 0) {
           const club = clubs.find(c => c.id === targetLeague.clubId);
           if (club) setSelectedClub(club);
         }
-        
+
         if (allGames.length > 0) {
           const game = allGames.find(g => g.name === targetLeague.basicInfo?.gameName);
           if (game) setSelectedGame(game);
@@ -1739,13 +1755,13 @@ export default function LeagueMatches() {
   })();
 
   // Qualifying matches are those in any non-knockout stage
-  const qualifyingMatches = matches.filter(m => 
-    ['group', 'round_robin', 'roundRobin', 'homeAway', 'swiss'].includes(m.stage) || 
+  const qualifyingMatches = matches.filter(m =>
+    ['group', 'round_robin', 'roundRobin', 'homeAway', 'swiss'].includes(m.stage) ||
     ['group', 'round_robin', 'roundRobin', 'homeAway', 'swiss'].includes(m.additionalData?.stage) ||
     (!m.stage && ['roundRobin', 'homeAway', 'swiss'].includes(effectiveFormat))
   );
   const allQualifyingMatchesDone = qualifyingMatches.length > 0 && qualifyingMatches.every(m => ['completed', 'bye', 'walkover'].includes(m.status));
-  
+
   // Check if all matches in the league are completed
   const allMatchesCompleted = (() => {
     if (matches.length === 0) return false;
@@ -1996,8 +2012,8 @@ export default function LeagueMatches() {
                 disabled={isAdvancingKnockout || !allQualifyingMatchesDone}
                 title={!allQualifyingMatchesDone ? 'All qualifying matches must be completed first' : 'Seed qualifiers into Knockout Bracket'}
                 className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1 shadow-sm transition-all ${allQualifyingMatchesDone
-                    ? 'bg-purple-600 text-white hover:bg-purple-700 cursor-pointer'
-                    : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  ? 'bg-purple-600 text-white hover:bg-purple-700 cursor-pointer'
+                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                   } disabled:opacity-60`}
               >
                 {isAdvancingKnockout ? (
@@ -2378,7 +2394,7 @@ export default function LeagueMatches() {
                         if (tab.id === 'walkover') return m.detailedStatus === 'WALKOVER';
                         return m.status === tab.id;
                       }).length;
-                      
+
                       // Don't render low-frequency tabs if count is 0, to keep the UI clean
                       if (['draw', 'whitewash', 'walkover', 'bye', 'cancelled'].includes(tab.id) && count === 0) return null;
 
@@ -2386,16 +2402,14 @@ export default function LeagueMatches() {
                         <button
                           key={tab.id}
                           onClick={() => setStatusFilter(tab.id)}
-                          className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${
-                            isActive 
-                              ? 'bg-[#132F45] text-white shadow-md shadow-[#132F45]/10 scale-[1.02]' 
-                              : 'bg-white text-gray-400 hover:bg-gray-50 border border-gray-100'
-                          }`}
+                          className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${isActive
+                            ? 'bg-[#132F45] text-white shadow-md shadow-[#132F45]/10 scale-[1.02]'
+                            : 'bg-white text-gray-400 hover:bg-gray-50 border border-gray-100'
+                            }`}
                         >
                           {tab.label}
-                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold ${
-                            isActive ? 'bg-[#BA995D] text-white' : 'bg-gray-100 text-gray-400'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold ${isActive ? 'bg-[#BA995D] text-white' : 'bg-gray-100 text-gray-400'
+                            }`}>
                             {count}
                           </span>
                         </button>
@@ -2405,7 +2419,7 @@ export default function LeagueMatches() {
 
                   <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
                     <div className="flex flex-wrap gap-3 items-center">
-                      
+
                       {/* Round filter — only when there are multiple rounds */}
                       {availableRounds.length > 1 && (
                         <div className="flex items-center gap-2">
@@ -2446,7 +2460,7 @@ export default function LeagueMatches() {
                       const isGK = effectiveFormat === 'groupsKnockout';
                       const isSwiss = effectiveFormat === 'swiss';
 
-                       // totalConfiguredRounds is now calculated at the component top-level to support allMatchesCompleted logic
+                      // totalConfiguredRounds is now calculated at the component top-level to support allMatchesCompleted logic
                       const hasNextRound = (selectedLeague?.currentRound || 1) < Math.max(maxRound, totalConfiguredRounds) && !allMatchesCompleted;
 
                       // For GK: only show Next Round button AFTER knockout has been seeded (bracket is active)
@@ -2489,131 +2503,133 @@ export default function LeagueMatches() {
                     const effectiveFormatStr = (structureFormat || format || '').toLowerCase();
                     const isKnockout = ['knockout', 'groupsknockout'].includes(effectiveFormatStr);
 
-                    {(() => {
-                      if (!champion && (!promoRegInfo || (promoRegInfo.promoted.length === 0 && promoRegInfo.relegated.length === 0))) return null;
+                    {
+                      (() => {
+                        if (!champion && (!promoRegInfo || (promoRegInfo.promoted.length === 0 && promoRegInfo.relegated.length === 0))) return null;
 
-                      return (
-                        <div className="mb-10 w-full max-w-4xl mx-auto">
-                          <motion.div 
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-gradient-to-br from-[#132F45] to-[#1A3F5C] rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-blue-900/50 relative overflow-hidden"
-                          >
-                            {/* Background Decorations */}
-                            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                              <FaTrophy className="text-9xl text-white -rotate-12" />
-                            </div>
+                        return (
+                          <div className="mb-10 w-full max-w-4xl mx-auto">
+                            <motion.div
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="bg-gradient-to-br from-[#132F45] to-[#1A3F5C] rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-blue-900/50 relative overflow-hidden"
+                            >
+                              {/* Background Decorations */}
+                              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                                <FaTrophy className="text-9xl text-white -rotate-12" />
+                              </div>
 
-                            <div className="flex items-center gap-4 mb-8 border-b border-white/10 pb-6 relative z-10">
-                              <div className="bg-yellow-400/20 p-3 rounded-2xl shadow-inner shadow-yellow-400/10">
-                                <FaTrophy className="text-yellow-400 text-2xl" />
+                              <div className="flex items-center gap-4 mb-8 border-b border-white/10 pb-6 relative z-10">
+                                <div className="bg-yellow-400/20 p-3 rounded-2xl shadow-inner shadow-yellow-400/10">
+                                  <FaTrophy className="text-yellow-400 text-2xl" />
+                                </div>
+                                <div>
+                                  <h3 className="text-white font-black text-2xl tracking-tight uppercase">League Season Results</h3>
+                                  <p className="text-blue-300/60 text-[10px] font-black uppercase tracking-[0.2em]">Official Completion Summary</p>
+                                </div>
                               </div>
-                              <div>
-                                <h3 className="text-white font-black text-2xl tracking-tight uppercase">League Season Results</h3>
-                                <p className="text-blue-300/60 text-[10px] font-black uppercase tracking-[0.2em]">Official Completion Summary</p>
-                              </div>
-                            </div>
-                            
-                            <div className="space-y-8 relative z-10">
-                              {/* Champion Spotlight Section */}
-                              {champion && (
-                                <div className="p-1 bg-gradient-to-r from-yellow-400/40 via-amber-500/40 to-yellow-400/40 rounded-[2rem]">
-                                  <div className="bg-[#132F45]/90 backdrop-blur-sm rounded-[1.9rem] p-5 md:p-6 flex items-center justify-between group hover:bg-[#1A3F5C] transition-all">
-                                    <div className="flex items-center gap-5 md:gap-8">
-                                      <div className="relative">
-                                        <motion.div 
-                                          animate={{ scale: [1, 1.05, 1] }}
-                                          transition={{ duration: 4, repeat: Infinity }}
-                                          className="h-16 w-16 md:h-24 md:w-24 rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-600 p-1 shadow-xl shadow-yellow-900/40 ring-4 ring-yellow-400/20"
-                                        >
-                                          <div className="h-full w-full rounded-xl overflow-hidden bg-blue-900/20">
-                                            {champion.avatarUrl ? (
-                                              <img src={getImageUrl(champion.avatarUrl)} alt="" className="h-full w-full object-cover" />
-                                            ) : (
-                                              <div className="h-full w-full flex items-center justify-center text-white text-3xl font-black">
-                                                {champion.name?.charAt(0) || '?'}
-                                              </div>
-                                            )}
+
+                              <div className="space-y-8 relative z-10">
+                                {/* Champion Spotlight Section */}
+                                {champion && (
+                                  <div className="p-1 bg-gradient-to-r from-yellow-400/40 via-amber-500/40 to-yellow-400/40 rounded-[2rem]">
+                                    <div className="bg-[#132F45]/90 backdrop-blur-sm rounded-[1.9rem] p-5 md:p-6 flex items-center justify-between group hover:bg-[#1A3F5C] transition-all">
+                                      <div className="flex items-center gap-5 md:gap-8">
+                                        <div className="relative">
+                                          <motion.div
+                                            animate={{ scale: [1, 1.05, 1] }}
+                                            transition={{ duration: 4, repeat: Infinity }}
+                                            className="h-16 w-16 md:h-24 md:w-24 rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-600 p-1 shadow-xl shadow-yellow-900/40 ring-4 ring-yellow-400/20"
+                                          >
+                                            <div className="h-full w-full rounded-xl overflow-hidden bg-blue-900/20">
+                                              {champion.avatarUrl ? (
+                                                <img src={getImageUrl(champion.avatarUrl)} alt="" className="h-full w-full object-cover" />
+                                              ) : (
+                                                <div className="h-full w-full flex items-center justify-center text-white text-3xl font-black">
+                                                  {champion.name?.charAt(0) || '?'}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </motion.div>
+                                          <div className="absolute -top-3 -right-3 bg-yellow-400 text-[#132F45] h-8 w-8 flex items-center justify-center rounded-full text-xs font-black shadow-lg border-2 border-[#132F45]">
+                                            <FaCrown />
                                           </div>
-                                        </motion.div>
-                                        <div className="absolute -top-3 -right-3 bg-yellow-400 text-[#132F45] h-8 w-8 flex items-center justify-center rounded-full text-xs font-black shadow-lg border-2 border-[#132F45]">
-                                          <FaCrown />
+                                        </div>
+
+                                        <div>
+                                          <div className="text-yellow-400/80 text-[10px] font-black uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
+                                            <FaStar className="text-[8px] animate-pulse" /> Official Champion
+                                          </div>
+                                          <div className="text-white text-2xl md:text-4xl font-black tracking-tight group-hover:text-yellow-400 transition-colors">
+                                            {champion.name}
+                                          </div>
+                                          <div className="mt-2 flex items-center gap-2">
+                                            <span className="text-blue-300/40 text-[9px] font-bold uppercase tracking-widest">Victory Confirmed</span>
+                                            <div className="h-1 w-1 rounded-full bg-blue-300/40" />
+                                            <span className="text-yellow-400/40 text-[9px] font-bold uppercase tracking-widest">Season Champion</span>
+                                          </div>
                                         </div>
                                       </div>
-                                      
-                                      <div>
-                                        <div className="text-yellow-400/80 text-[10px] font-black uppercase tracking-[0.3em] mb-2 flex items-center gap-2">
-                                          <FaStar className="text-[8px] animate-pulse" /> Official Champion
-                                        </div>
-                                        <div className="text-white text-2xl md:text-4xl font-black tracking-tight group-hover:text-yellow-400 transition-colors">
-                                          {champion.name}
-                                        </div>
-                                        <div className="mt-2 flex items-center gap-2">
-                                           <span className="text-blue-300/40 text-[9px] font-bold uppercase tracking-widest">Victory Confirmed</span>
-                                           <div className="h-1 w-1 rounded-full bg-blue-300/40" />
-                                           <span className="text-yellow-400/40 text-[9px] font-bold uppercase tracking-widest">Season Champion</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="hidden lg:flex flex-col items-end">
-                                       <div className="text-right px-6 py-3 bg-white/5 rounded-2xl border border-white/10">
+
+                                      <div className="hidden lg:flex flex-col items-end">
+                                        <div className="text-right px-6 py-3 bg-white/5 rounded-2xl border border-white/10">
                                           <div className="text-yellow-400 font-black text-3xl leading-none">#1</div>
                                           <div className="text-white/40 text-[9px] font-black uppercase tracking-widest mt-1">League Leader</div>
-                                       </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
-                              
-                              {/* Divisional Results (Promoted/Relegated) */}
-                              {promoRegInfo && (promoRegInfo.promoted.length > 0 || promoRegInfo.relegated.length > 0) && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-                                  {promoRegInfo.promoted.length > 0 && (
-                                    <div className="space-y-4">
-                                      <div className="flex items-center gap-3 text-green-400 text-xs font-black uppercase tracking-[0.2em] bg-green-400/5 py-2 px-4 rounded-xl border border-green-400/10 w-fit">
-                                        <FaStar className="animate-bounce" /> Promoted Players
-                                      </div>
-                                      <div className="grid grid-cols-1 gap-2.5">
-                                        {promoRegInfo.promoted.map((p, i) => (
-                                          <div key={i} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-5 py-4 group hover:bg-white/10 transition-all">
-                                            <div className="flex items-center gap-4">
-                                              <div className="text-white/20 font-black italic text-xl w-6">#{i+1}</div>
-                                              <div className="text-white font-bold tracking-wide group-hover:text-green-400 transition-colors">{p.player?.name}</div>
+                                )}
+
+                                {/* Divisional Results (Promoted/Relegated) */}
+                                {promoRegInfo && (promoRegInfo.promoted.length > 0 || promoRegInfo.relegated.length > 0) && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                                    {promoRegInfo.promoted.length > 0 && (
+                                      <div className="space-y-4">
+                                        <div className="flex items-center gap-3 text-green-400 text-xs font-black uppercase tracking-[0.2em] bg-green-400/5 py-2 px-4 rounded-xl border border-green-400/10 w-fit">
+                                          <FaStar className="animate-bounce" /> Promoted Players
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2.5">
+                                          {promoRegInfo.promoted.map((p, i) => (
+                                            <div key={i} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-5 py-4 group hover:bg-white/10 transition-all">
+                                              <div className="flex items-center gap-4">
+                                                <div className="text-white/20 font-black italic text-xl w-6">#{i + 1}</div>
+                                                <div className="text-white font-bold tracking-wide group-hover:text-green-400 transition-colors">{p.player?.name}</div>
+                                              </div>
+                                              <div className="bg-green-500/10 text-green-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-green-500/20">
+                                                Moving Up
+                                              </div>
                                             </div>
-                                            <div className="bg-green-500/10 text-green-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-green-500/20">
-                                              Moving Up
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {promoRegInfo.relegated.length > 0 && (
+                                      <div className="space-y-4">
+                                        <div className="flex items-center gap-3 text-red-400 text-xs font-black uppercase tracking-[0.2em] bg-red-400/5 py-2 px-4 rounded-xl border border-red-400/10 w-fit">
+                                          <FaArrowDown className="animate-bounce" /> Relegated Players
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2.5">
+                                          {promoRegInfo.relegated.map((p, i) => (
+                                            <div key={i} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-5 py-4 group hover:bg-white/10 transition-all">
+                                              <div className="text-white font-bold tracking-wide group-hover:text-red-400 transition-colors">{p.player?.name}</div>
+                                              <div className="bg-red-500/10 text-red-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-red-500/20">
+                                                Relegated
+                                              </div>
                                             </div>
-                                          </div>
-                                        ))}
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
-                                  
-                                  {promoRegInfo.relegated.length > 0 && (
-                                    <div className="space-y-4">
-                                      <div className="flex items-center gap-3 text-red-400 text-xs font-black uppercase tracking-[0.2em] bg-red-400/5 py-2 px-4 rounded-xl border border-red-400/10 w-fit">
-                                        <FaArrowDown className="animate-bounce" /> Relegated Players
-                                      </div>
-                                      <div className="grid grid-cols-1 gap-2.5">
-                                        {promoRegInfo.relegated.map((p, i) => (
-                                          <div key={i} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-2xl px-5 py-4 group hover:bg-white/10 transition-all">
-                                            <div className="text-white font-bold tracking-wide group-hover:text-red-400 transition-colors">{p.player?.name}</div>
-                                            <div className="bg-red-500/10 text-red-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-red-500/20">
-                                              Relegated
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        </div>
-                      );
-                    })()}
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          </div>
+                        );
+                      })()
+                    }
                     return null;
                   })()}
                   {viewMode === "bracket" ? (
@@ -2655,7 +2671,7 @@ export default function LeagueMatches() {
                           return hasPlayers || isMajorRound;
                         });
 
-                        const groupMatches = displayMatches.filter(m => 
+                        const groupMatches = displayMatches.filter(m =>
                           (!m.stage || m.stage === 'group' || m.stage === 'round_robin' || m.stage === 'swiss') &&
                           (m.player1Id || m.player2Id || m.status === 'bye' || m.status === 'completed' || m.status === 'walkover') &&
                           !knockoutMatches.some(km => km.id === m.id) // Ensure mutual exclusion
@@ -2681,8 +2697,8 @@ export default function LeagueMatches() {
                                 <div className="relative flex flex-col items-center">
                                   <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
                                   <div className={`relative z-10 px-8 py-2 rounded-2xl border flex flex-col items-center shadow-sm ${isKnockout
-                                      ? 'bg-gradient-to-br from-[#132F45] to-[#1A3F5C] border-blue-900 text-white'
-                                      : 'bg-white border-gray-100 text-[#132F45]'
+                                    ? 'bg-gradient-to-br from-[#132F45] to-[#1A3F5C] border-blue-900 text-white'
+                                    : 'bg-white border-gray-100 text-[#132F45]'
                                     }`}>
                                     <span className={`text-[10px] font-black uppercase tracking-[0.3em] mb-1 ${isKnockout ? 'text-blue-300' : 'text-blue-600'}`}>
                                       {isKnockout ? 'Championship Phase' : 'Opening Phase'}
@@ -2693,32 +2709,32 @@ export default function LeagueMatches() {
                               )}
 
                               <div className="space-y-10">
-                                  {rounds.map(r => {
-                                    // Determine display name for the round
-                                    let roundName = `Round ${r}`;
-                                    if (isKnockout) {
-                                      // Get all unique round numbers in this specific knockout stage
-                                      const stageRounds = [...new Set(matches.map(m => m.additionalData?.round || m.round))].sort((a, b) => a - b);
-                                      const firstRoundInStage = stageRounds[0] || 1;
-                                      const lastRoundInStage = stageRounds[stageRounds.length - 1] || 1;
+                                {rounds.map(r => {
+                                  // Determine display name for the round
+                                  let roundName = `Round ${r}`;
+                                  if (isKnockout) {
+                                    // Get all unique round numbers in this specific knockout stage
+                                    const stageRounds = [...new Set(matches.map(m => m.additionalData?.round || m.round))].sort((a, b) => a - b);
+                                    const firstRoundInStage = stageRounds[0] || 1;
+                                    const lastRoundInStage = stageRounds[stageRounds.length - 1] || 1;
 
-                                      // How many rounds do we expect based on the size of the first round in this stage?
-                                      const r1MatchesInStage = matches.filter(m => (m.additionalData?.round || m.round) === firstRoundInStage);
-                                      const expectedRoundsFromSize = r1MatchesInStage.length > 0 ? Math.ceil(Math.log2(r1MatchesInStage.length * 2)) : 0;
+                                    // How many rounds do we expect based on the size of the first round in this stage?
+                                    const r1MatchesInStage = matches.filter(m => (m.additionalData?.round || m.round) === firstRoundInStage);
+                                    const expectedRoundsFromSize = r1MatchesInStage.length > 0 ? Math.ceil(Math.log2(r1MatchesInStage.length * 2)) : 0;
 
-                                      // The effective final round number for this knockout phase
-                                      // If we have R1 and it implies 3 rounds total, then final round is R1 + 3 - 1 = R3.
-                                      const stageFinalRound = Math.max(lastRoundInStage, firstRoundInStage + expectedRoundsFromSize - 1);
+                                    // The effective final round number for this knockout phase
+                                    // If we have R1 and it implies 3 rounds total, then final round is R1 + 3 - 1 = R3.
+                                    const stageFinalRound = Math.max(lastRoundInStage, firstRoundInStage + expectedRoundsFromSize - 1);
 
-                                      const roundsRemaining = stageFinalRound - r;
-                                      if (roundsRemaining === 0) roundName = "Grand Final";
-                                      else if (roundsRemaining === 1) roundName = "Semi-Finals";
-                                      else if (roundsRemaining === 2) roundName = "Quarter-Finals";
-                                      else if (roundsRemaining === 3) roundName = "Round of 16";
-                                      else if (roundsRemaining === 4) roundName = "Round of 32";
-                                      else if (roundsRemaining === 5) roundName = "Round of 64";
-                                      else roundName = `Knockout Round ${r}`;
-                                    }
+                                    const roundsRemaining = stageFinalRound - r;
+                                    if (roundsRemaining === 0) roundName = "Grand Final";
+                                    else if (roundsRemaining === 1) roundName = "Semi-Finals";
+                                    else if (roundsRemaining === 2) roundName = "Quarter-Finals";
+                                    else if (roundsRemaining === 3) roundName = "Round of 16";
+                                    else if (roundsRemaining === 4) roundName = "Round of 32";
+                                    else if (roundsRemaining === 5) roundName = "Round of 64";
+                                    else roundName = `Knockout Round ${r}`;
+                                  }
 
                                   return (
                                     <div key={`stage-${title}-round-${r}`}>
@@ -3042,10 +3058,10 @@ export default function LeagueMatches() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                     <div className="px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <span className="text-[10px] font-black text-[#132F45] uppercase tracking-widest">Active Configuration</span>
-                     </div>
+                    <div className="px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                      <span className="text-[10px] font-black text-[#132F45] uppercase tracking-widest">Active Configuration</span>
+                    </div>
                   </div>
                 </div>
 
@@ -3146,7 +3162,7 @@ export default function LeagueMatches() {
                           {selectedLeague.structure?.relegationCount || selectedLeague.structure?.divisions?.relegations || 0} spots
                         </span>
                       </div>
-                      
+
                       {selectedLeague?.status === 'completed' && promoRegInfo && (
                         <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
                           {promoRegInfo.promoted.length > 0 && (
@@ -3272,8 +3288,8 @@ export default function LeagueMatches() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-slate-400 font-medium">Method:</span>
                         <span className="font-black tracking-tight text-[#132F45] text-[10px] bg-slate-100 px-2 py-0.5 rounded">
-                          {selectedLeague.reporting?.method === 'bothConfirm' ? 'BOTH CONFIRM' : 
-                           selectedLeague.reporting?.method === 'oneSubmit' ? 'SINGLE SUBMISSION' : 'STANDARD'}
+                          {selectedLeague.reporting?.method === 'bothConfirm' ? 'BOTH CONFIRM' :
+                            selectedLeague.reporting?.method === 'oneSubmit' ? 'SINGLE SUBMISSION' : 'STANDARD'}
                         </span>
                       </div>
                       {[
@@ -3357,8 +3373,8 @@ export default function LeagueMatches() {
                 {(selectedLeague.basicInfo?.description || selectedLeague.advanced?.terms) && (
                   <div className="mt-16 pt-10 border-t border-slate-100">
                     <div className="flex items-center gap-3 mb-6">
-                       <FaInfoCircle className="text-slate-300" />
-                       <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Organizer Notes & Terms</h3>
+                      <FaInfoCircle className="text-slate-300" />
+                      <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Organizer Notes & Terms</h3>
                     </div>
                     <div className="bg-slate-50/50 rounded-[2rem] p-8 text-slate-600 text-sm leading-relaxed whitespace-pre-line border border-slate-100 italic relative overflow-hidden">
                       <div className="absolute top-0 left-0 w-1 h-full bg-slate-200"></div>
@@ -3493,23 +3509,22 @@ function MatchDetailsModal({ match, onClose, statusStyles, formatDate, formatTim
                 </span>
               )}
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${
-              match.isWalkover || match.detailedStatus === 'WALKOVER'
-                ? 'bg-orange-50 text-orange-600 border border-orange-100'
-                : match.detailedStatus === 'DRAW'
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${match.isWalkover || match.detailedStatus === 'WALKOVER'
+              ? 'bg-orange-50 text-orange-600 border border-orange-100'
+              : match.detailedStatus === 'DRAW'
                 ? 'bg-teal-50 text-teal-600 border border-teal-100'
                 : match.detailedStatus === 'WHITEWASH'
-                ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
-                : match.detailedStatus === 'TIE-BREAK'
-                ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                : match.detailedStatus === 'FORFEIT'
-                ? 'bg-red-50 text-red-600 border border-red-100'
-                : match.detailedStatus === 'PENDING APPROVAL'
-                ? 'bg-yellow-50 text-yellow-600 border border-yellow-100'
-                : match.status === 'completed'
-                ? 'bg-green-50 text-green-600 border border-green-100'
-                : (statusStyles[match.status] || statusStyles.pending)
-            }`}>
+                  ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                  : match.detailedStatus === 'TIE-BREAK'
+                    ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                    : match.detailedStatus === 'FORFEIT'
+                      ? 'bg-red-50 text-red-600 border border-red-100'
+                      : match.detailedStatus === 'PENDING APPROVAL'
+                        ? 'bg-yellow-50 text-yellow-600 border border-yellow-100'
+                        : match.status === 'completed'
+                          ? 'bg-green-50 text-green-600 border border-green-100'
+                          : (statusStyles[match.status] || statusStyles.pending)
+              }`}>
               {match.isWalkover || match.detailedStatus === 'WALKOVER' ? (
                 <><FaTrophy size={14} /> WALKOVER</>
               ) : match.detailedStatus === 'DRAW' ? (
@@ -3977,7 +3992,7 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
       if (fixture.resultData) {
         try {
           existingResultData = typeof fixture.resultData === 'string' ? JSON.parse(fixture.resultData) : fixture.resultData;
-        } catch (e) {}
+        } catch (e) { }
       }
 
       const updatePayload = {
@@ -4086,11 +4101,10 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                     type="button"
                     key={venue.id}
                     onClick={() => handleVenueSelect(venue)}
-                    className={`p-4 rounded-xl border transition-all duration-300 text-left relative group overflow-hidden ${
-                      selectedVenue?.id === venue.id
-                        ? 'border-orange-500 bg-orange-50/20 text-[#132F45] shadow-lg shadow-orange-500/5'
-                        : 'border-gray-100 bg-white hover:border-orange-200 text-[#132F45] shadow-sm hover:shadow-md'
-                    }`}
+                    className={`p-4 rounded-xl border transition-all duration-300 text-left relative group overflow-hidden ${selectedVenue?.id === venue.id
+                      ? 'border-orange-500 bg-orange-50/20 text-[#132F45] shadow-lg shadow-orange-500/5'
+                      : 'border-gray-100 bg-white hover:border-orange-200 text-[#132F45] shadow-sm hover:shadow-md'
+                      }`}
                   >
                     <div className="flex items-center gap-3 relative z-10">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedVenue?.id === venue.id ? 'bg-orange-500' : 'bg-gray-50'}`}>
@@ -4115,7 +4129,7 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                 <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-3">
                   <div className="w-1.5 h-3 bg-orange-500 rounded-full" /> STEP 2: SELECT DATE
                 </h3>
-                
+
                 <div className="bg-white border border-gray-200/60 rounded-2xl p-4 shadow-sm max-w-[280px] mx-auto w-full">
                   <div className="flex items-center justify-between mb-4">
                     <button
@@ -4149,15 +4163,14 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                       <div
                         key={index}
                         onClick={() => handleDateSelect(day)}
-                        className={`aspect-square flex flex-col items-center justify-center rounded-lg cursor-pointer transition-all relative ${
-                          day.day === null
-                            ? 'bg-transparent cursor-default pointer-events-none'
-                            : day.disabled
-                              ? 'bg-gray-50/50 text-gray-200 cursor-not-allowed opacity-30'
-                              : selectedDate === day.day
-                                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20 scale-105 ring-1 ring-orange-500/30'
-                                : 'bg-white border border-gray-100 hover:border-orange-500/30 text-[#132F45]'
-                        }`}
+                        className={`aspect-square flex flex-col items-center justify-center rounded-lg cursor-pointer transition-all relative ${day.day === null
+                          ? 'bg-transparent cursor-default pointer-events-none'
+                          : day.disabled
+                            ? 'bg-gray-50/50 text-gray-200 cursor-not-allowed opacity-30'
+                            : selectedDate === day.day
+                              ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20 scale-105 ring-1 ring-orange-500/30'
+                              : 'bg-white border border-gray-100 hover:border-orange-500/30 text-[#132F45]'
+                          }`}
                       >
                         <span className="text-[9px] font-black">{day.day}</span>
                       </div>
@@ -4178,11 +4191,11 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                       const realTables = Array.isArray(selectedVenue.tables) && selectedVenue.tables.length > 0
                         ? selectedVenue.tables
                         : Array.from({
-                            length: Math.max(1, Number(selectedVenue.numberOfTables) || 2)
-                          }).map((_, i) => ({
-                            tableNumber: i + 1,
-                            name: `Table ${i + 1}`
-                          }));
+                          length: Math.max(1, Number(selectedVenue.numberOfTables) || 2)
+                        }).map((_, i) => ({
+                          tableNumber: i + 1,
+                          name: `Table ${i + 1}`
+                        }));
 
                       return realTables.map((table, i) => {
                         const tableIndex = typeof table === 'object' ? (table.tableNumber || i + 1) : (i + 1);
@@ -4204,13 +4217,12 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                             key={tableIndex}
                             onClick={() => !hasNoAvailableSlots && handleVenueTableSelect(tableIndex, tableName, tableId)}
                             disabled={hasNoAvailableSlots}
-                            className={`p-4 rounded-xl border transition-all duration-300 text-center ${
-                              hasNoAvailableSlots
-                                ? 'bg-gray-50 border-transparent opacity-30 cursor-not-allowed'
-                                : isSelected
-                                  ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-500/20'
-                                  : 'bg-white border-gray-100 text-[#132F45] shadow-sm hover:border-orange-500/20'
-                            }`}
+                            className={`p-4 rounded-xl border transition-all duration-300 text-center ${hasNoAvailableSlots
+                              ? 'bg-gray-50 border-transparent opacity-30 cursor-not-allowed'
+                              : isSelected
+                                ? 'bg-orange-500 border-orange-500 text-white shadow-lg shadow-orange-500/20'
+                                : 'bg-white border-gray-100 text-[#132F45] shadow-sm hover:border-orange-500/20'
+                              }`}
                           >
                             <p className="font-black text-[9px] uppercase tracking-widest">{tableName}</p>
                           </button>
@@ -4263,13 +4275,12 @@ function EditFixtureModal({ fixture, league, advancedSettings = {}, onClose, onU
                           key={idx}
                           onClick={() => handleTimeSlotSelect(slot, tableInfo)}
                           disabled={!isAvailable}
-                          className={`p-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 shadow-sm ${
-                            isSelected
-                              ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                              : isAvailable
-                                ? 'bg-white border border-gray-200 text-[#132F45] hover:border-orange-500'
-                                : 'bg-gray-50 text-gray-300 border-transparent cursor-not-allowed opacity-40'
-                          }`}
+                          className={`p-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 shadow-sm ${isSelected
+                            ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                            : isAvailable
+                              ? 'bg-white border border-gray-200 text-[#132F45] hover:border-orange-500'
+                              : 'bg-gray-50 text-gray-300 border-transparent cursor-not-allowed opacity-40'
+                            }`}
                         >
                           {slot.displayTime}
                         </button>
