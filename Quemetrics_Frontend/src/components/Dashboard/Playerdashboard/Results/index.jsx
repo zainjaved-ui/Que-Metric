@@ -268,12 +268,25 @@ export default function Results() {
               </div>
             )}
 
-            {result.sport === 'pooker' && (result.player1BallsPotted > 0 || result.player2BallsPotted > 0) && (
+            {(result.sport === 'pool' || result.sport === 'pooker') && (result.player1BallsPotted > 0 || result.player2BallsPotted > 0 || result.player1SevenBallWins > 0 || result.player2SevenBallWins > 0) && (
               <div className="flex items-center gap-1.5 text-[8.5px] font-black text-[#132F45] uppercase bg-purple-50 px-3.5 py-2.5 rounded-xl border border-purple-100 flex-[1_0_auto] justify-center w-full sm:w-auto">
-                <span className="text-purple-600">Balls:</span>
-                <span className="text-gray-500">{leftPlayer?.name?.split(' ')[0]}</span> <span className="text-purple-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player1BallsPotted}</span>
-                <span className="text-gray-300 mx-1">|</span>
-                <span className="text-gray-500">{rightPlayer?.name?.split(' ')[0]}</span> <span className="text-purple-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player2BallsPotted}</span>
+                {(result.player1BallsPotted > 0 || result.player2BallsPotted > 0) && (
+                  <>
+                    <span className="text-purple-600">Balls:</span>
+                    <span className="text-gray-500">{leftPlayer?.name?.split(' ')[0]}</span> <span className="text-purple-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player1BallsPotted}</span>
+                    <span className="text-gray-300 mx-1">|</span>
+                    <span className="text-gray-500">{rightPlayer?.name?.split(' ')[0]}</span> <span className="text-purple-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player2BallsPotted}</span>
+                  </>
+                )}
+                {(result.player1SevenBallWins > 0 || result.player2SevenBallWins > 0) && (
+                  <>
+                    <span className="text-gray-300 mx-1">•</span>
+                    <span className="text-yellow-600">7-Balls:</span>
+                    <span className="text-gray-500">{leftPlayer?.name?.split(' ')[0]}</span> <span className="text-yellow-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player1SevenBallWins}</span>
+                    <span className="text-gray-300 mx-1">|</span>
+                    <span className="text-gray-500">{rightPlayer?.name?.split(' ')[0]}</span> <span className="text-yellow-700 bg-white px-1.5 py-0.5 rounded-md shadow-sm">{result.player2SevenBallWins}</span>
+                  </>
+                )}
               </div>
             )}
 
@@ -287,6 +300,64 @@ export default function Results() {
           {result.notes && (
             <div className="mb-6 p-3.5 bg-blue-50/50 rounded-xl border border-blue-100/50 italic text-[10px] text-[#132F45] font-medium leading-relaxed">
               "{result.notes}"
+            </div>
+          )}
+
+          {/* Match Statistics Summary - for Pool/Pooker */}
+          {(result.sport === 'pool' || result.sport === 'pooker') && (result.player1BallsPotted !== undefined || result.player2BallsPotted !== undefined || result.player1SevenBallWins !== undefined || result.player2SevenBallWins !== undefined) && (
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-100 mb-6">
+              <h3 className="text-[9px] font-black text-[#132F45] mb-3 flex items-center gap-2 uppercase tracking-widest">
+                📊 Match Stats
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Balls Potted */}
+                {(result.player1BallsPotted !== undefined || result.player2BallsPotted !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-purple-100">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">Balls</p>
+                      <p className="text-xl font-black text-purple-600">{result.player1BallsPotted ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{leftPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-purple-100">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">Balls</p>
+                      <p className="text-xl font-black text-purple-600">{result.player2BallsPotted ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{rightPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* 7-Ball Wins */}
+                {(result.player1SevenBallWins !== undefined || result.player2SevenBallWins !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-yellow-100">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">7-Ball</p>
+                      <p className="text-xl font-black text-yellow-600">{result.player1SevenBallWins ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{leftPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-yellow-100">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">7-Ball</p>
+                      <p className="text-xl font-black text-yellow-600">{result.player2SevenBallWins ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{rightPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Black Finishes (Pooker only) */}
+                {result.sport === 'pooker' && (result.player1BlackFinishes !== undefined || result.player2BlackFinishes !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-gray-900 border-opacity-20">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">Black</p>
+                      <p className="text-xl font-black text-gray-800">{result.player1BlackFinishes ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{leftPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-gray-900 border-opacity-20">
+                      <p className="text-[8px] font-black text-gray-500 uppercase tracking-wider mb-1">Black</p>
+                      <p className="text-xl font-black text-gray-800">{result.player2BlackFinishes ?? 0}</p>
+                      <p className="text-[8px] text-gray-400 mt-1 truncate">{rightPlayer?.name?.split(' ')[0]}</p>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
