@@ -59,6 +59,30 @@ const ensureVenueOwnerColumns = async () => {
 
 const normalizeVenueKey = (id) => String(id || "").trim();
 
+const computeSeasonStatus = (season) => {
+  const start = season?.startDate ? new Date(season.startDate) : null;
+  const end = season?.endDate ? new Date(season.endDate) : null;
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return season?.status || "upcoming";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (start <= today && end >= today) return "active";
+  if (end < today) return "completed";
+  return "upcoming";
+};
+
+const serializeSeason = (season) => {
+  if (!season) return season;
+  const plain = typeof season.toJSON === "function" ? season.toJSON() : { ...season };
+  return {
+    ...plain,
+    status: computeSeasonStatus(plain),
+  };
+};
+
 const normalizeVenueToken = (value) =>
   String(value || "")
     .replace(/^(venue_|virtual_)/, "")
@@ -1317,7 +1341,7 @@ exports.getAllSeasons = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        seasons,
+        seasons: seasons.map(serializeSeason),
         pagination: {
           total: count,
           page: parseInt(page),
@@ -1393,7 +1417,7 @@ exports.getSeasonById = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: season,
+      data: serializeSeason(season),
       message: "Season retrieved successfully"
     });
 
@@ -1682,7 +1706,7 @@ exports.getCurrentSeason = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: currentSeason,
+      data: serializeSeason(currentSeason),
       message: "Current season retrieved successfully"
     });
 
