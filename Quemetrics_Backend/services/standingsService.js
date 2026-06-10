@@ -55,10 +55,12 @@ async function updateLeagueStandings(leagueId) {
     const results = await MatchResult.findAll({
         where: {
             leagueId,
-            resultStatus: { [Op.or]: [
-                sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'confirmed'),
-                sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'completed')
-            ]}
+            resultStatus: {
+                [Op.or]: [
+                    sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'confirmed'),
+                    sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'completed')
+                ]
+            }
         }
     });
 
@@ -223,7 +225,7 @@ async function updateLeagueStandings(leagueId) {
             if (pointsSystem.bonuses?.breakOverX) {
                 const threshold = Number(pointsSystem.bonuses.breakValue) || 50;
                 const bPoints = Number(pointsSystem.bonuses.breakPoints) || 1;
-                
+
                 if (p1MatchHighBreak >= threshold) {
                     p1.points += bPoints;
                     p1.bonusPoints += bPoints;
@@ -333,14 +335,14 @@ async function updateLeagueStandings(leagueId) {
 
                 winner.points += wPoints;
                 loser.points += lPoints;
-                
+
                 // Apply handicap bonus to winner
                 const winnerHandicap = isP1Winner ? p1HandicapBonus : p2HandicapBonus;
                 if (winnerHandicap > 0) {
                     winner.points += winnerHandicap;
                     winner.bonusPoints += winnerHandicap;
                 }
-                
+
                 winner.headToHead[loserIdStr] = (winner.headToHead[loserIdStr] || 0) + wPoints;
                 loser.headToHead[winnerIdStr] = (loser.headToHead[winnerIdStr] || 0) + lPoints;
 
@@ -349,7 +351,7 @@ async function updateLeagueStandings(leagueId) {
                 const loserScore = isP1Winner ? f2 : f1;
                 if (loserScore === 0 && winnerScore > 0) {
                     winner.whitewashes += 1;
-                    
+
                     // Award bonus points only if enabled in pointsSystem
                     if (pointsSystem.bonuses?.whitewash) {
                         const wwPoints = pointsSystem.bonuses.whitewashPoints || 1;
@@ -369,14 +371,14 @@ async function updateLeagueStandings(leagueId) {
             continue;
         }
 
-        // Standard Practice: Bye player is the winner for advancement, but no stats/points are awarded
+        // Standard Practice: Bye player advances without any stats, points, or streak impact.
+        // Byes are NOT real matches, so we deliberately do NOT push to matchHistory.
+        // This ensures the streak (W1, W2, L1 etc.) is calculated from real matches only.
         // player.matchesPlayed += 0;
         // player.matchesWon += 0;
         // player.points += 0;
         // player.framesWon += 0;
-
-        // Still record the 'W' in history for UI display if needed, but it won't affect calculated totals above
-        player.matchHistory.push({ date: bye.updatedAt || bye.createdAt, outcome: 'W' });
+        // matchHistory NOT pushed — bye does not affect streak.
     }
 
     // 4e. Calculate Swiss Tie-breaks if applicable
@@ -404,8 +406,8 @@ async function updateLeagueStandings(leagueId) {
                 score = player.opponents.reduce((sum, oppId) => {
                     const opponentPoints = statsMap[oppId]?.points || 0;
                     const ourMatchPointsAgainstThem = player.headToHead[oppId] || 0;
-                    const resultWeight = (ourMatchPointsAgainstThem >= (pointsSystem.win || 3)) ? 1 : 
-                                       (ourMatchPointsAgainstThem >= (pointsSystem.draw || 1)) ? 0.5 : 0;
+                    const resultWeight = (ourMatchPointsAgainstThem >= (pointsSystem.win || 3)) ? 1 :
+                        (ourMatchPointsAgainstThem >= (pointsSystem.draw || 1)) ? 0.5 : 0;
                     return sum + (opponentPoints * resultWeight);
                 }, 0);
             }

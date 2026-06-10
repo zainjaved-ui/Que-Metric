@@ -500,6 +500,15 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
   const p1Id = dispute?.player1Id || dispute?.matchResult?.player1Id;
   const submitterIsP1 = !dispute?.submitterId || String(dispute.submitterId) === String(p1Id);
 
+  const matchRules = dispute?.league?.matchRules || dispute?.matchResult?.league?.matchRules || dispute?.matchResult?.booking?.league?.matchRules;
+  let parsedRules = {};
+  if (typeof matchRules === 'string') {
+    try { parsedRules = JSON.parse(matchRules); } catch (e) { }
+  } else if (matchRules) {
+    parsedRules = matchRules;
+  }
+  const isOverallPointsEnabled = !matchRules || parsedRules.scoreDetail === 'points';
+
   useEffect(() => {
     if (dispute) {
       const p1Frames = dispute.player1Frames ?? dispute.matchResult?.player1Frames ?? 0;
@@ -513,12 +522,12 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
       const p2ClaimRacks = dispute.claimedPlayer2RackWins ?? 0;
 
       const subDetails = safeParseJSON(isSnooker ? (dispute.snookerFrameDetails || dispute.matchResult?.snookerFrameDetails) :
-                                      isPooker ? (dispute.pookerFrameDetails || dispute.matchResult?.pookerFrameDetails) :
-                                      (dispute.poolRackDetails || dispute.matchResult?.poolRackDetails));
+        isPooker ? (dispute.pookerFrameDetails || dispute.matchResult?.pookerFrameDetails) :
+          (dispute.poolRackDetails || dispute.matchResult?.poolRackDetails));
 
       const claimDetails = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails :
-                                        isPooker ? dispute.claimedPookerFrameDetails :
-                                        dispute.claimedPoolRackDetails);
+        isPooker ? dispute.claimedPookerFrameDetails :
+          dispute.claimedPoolRackDetails);
 
       // INITIAL CALCULATION: Derive totals from subDetails to ensure we don't start at 0-0 if top fields are null
       let initialP1Total = p1Frames || p1Racks || 0;
@@ -707,62 +716,62 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
         <div className="grid grid-cols-2 gap-4">
           {/* Submitted Section */}
           <div className="p-4 bg-gradient-to-br from-blue-50/50 to-white rounded-2xl border border-blue-100 flex flex-col items-center shadow-sm">
-             <div className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-widest">Submitted Version</div>
-             <div className="flex items-center gap-4">
-                <div className="text-center">
-                   <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player1?.name || dispute.matchResult?.player1?.nickname || 'P1'}</div>
-                   <div className="text-2xl font-black text-gray-900">{resolutionData.initialP1Total || 0}</div>
-                </div>
-                <div className="text-gray-300 font-black text-lg">:</div>
-                <div className="text-center">
-                   <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player2?.name || dispute.matchResult?.player2?.nickname || 'P2'}</div>
-                   <div className="text-2xl font-black text-gray-900">{resolutionData.initialP2Total || 0}</div>
-                </div>
-             </div>
+            <div className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-widest">Submitted Version</div>
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player1?.name || dispute.matchResult?.player1?.nickname || 'P1'}</div>
+                <div className="text-2xl font-black text-gray-900">{resolutionData.initialP1Total || 0}</div>
+              </div>
+              <div className="text-gray-300 font-black text-lg">:</div>
+              <div className="text-center">
+                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player2?.name || dispute.matchResult?.player2?.nickname || 'P2'}</div>
+                <div className="text-2xl font-black text-gray-900">{resolutionData.initialP2Total || 0}</div>
+              </div>
+            </div>
           </div>
 
           {/* Claimed Section */}
           <div className="p-4 bg-gradient-to-br from-red-50/50 to-white rounded-2xl border border-red-100 flex flex-col items-center shadow-sm">
-             <div className="text-[10px] font-black text-red-500 uppercase mb-2 tracking-widest">Opponent's Claim</div>
-             <div className="flex items-center gap-4">
-                 <div className="text-center">
-                    <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player1?.name || dispute.matchResult?.player1?.nickname || 'P1'}</div>
-                    <div className="text-2xl font-black text-gray-900">{(() => {
-                       const claimDetails = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails : isPooker ? dispute.claimedPookerFrameDetails : dispute.claimedPoolRackDetails);
-                       if (Array.isArray(claimDetails) && claimDetails.length > 0) {
-                         let p1Count = 0;
-                         const p1Id = dispute.matchResult?.player1Id;
-                         const p2Id = dispute.matchResult?.player2Id;
-                         claimDetails.forEach(f => {
-                            const s1 = parseInt(f.player1Score) || 0;
-                            const s2 = parseInt(f.player2Score) || 0;
-                            if (String(f.winnerId) === String(p1Id) || s1 > s2) p1Count++;
-                         });
-                         return p1Count || (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
-                       }
-                       return (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
-                    })()}</div>
-                </div>
-                <div className="text-gray-300 font-black text-lg">:</div>
-                <div className="text-center">
-                   <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player2?.name || dispute.matchResult?.player2?.nickname || 'P2'}</div>
-                   <div className="text-2xl font-black text-gray-900">{(() => {
-                      const claimDetails = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails : isPooker ? dispute.claimedPookerFrameDetails : dispute.claimedPoolRackDetails);
-                      if (Array.isArray(claimDetails) && claimDetails.length > 0) {
-                        let p2Count = 0;
-                        const p1Id = dispute.matchResult?.player1Id;
-                        const p2Id = dispute.matchResult?.player2Id;
-                        claimDetails.forEach(f => {
-                           const s1 = parseInt(f.player1Score) || 0;
-                           const s2 = parseInt(f.player2Score) || 0;
-                           if (String(f.winnerId) === String(p2Id) || s2 > s1) p2Count++;
-                        });
-                        return p2Count || (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
-                      }
-                      return (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
-                   })()}</div>
-                </div>
-             </div>
+            <div className="text-[10px] font-black text-red-500 uppercase mb-2 tracking-widest">Opponent's Claim</div>
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player1?.name || dispute.matchResult?.player1?.nickname || 'P1'}</div>
+                <div className="text-2xl font-black text-gray-900">{(() => {
+                  const claimDetails = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails : isPooker ? dispute.claimedPookerFrameDetails : dispute.claimedPoolRackDetails);
+                  if (Array.isArray(claimDetails) && claimDetails.length > 0) {
+                    let p1Count = 0;
+                    const p1Id = dispute.matchResult?.player1Id;
+                    const p2Id = dispute.matchResult?.player2Id;
+                    claimDetails.forEach(f => {
+                      const s1 = parseInt(f.player1Score) || 0;
+                      const s2 = parseInt(f.player2Score) || 0;
+                      if (String(f.winnerId) === String(p1Id) || s1 > s2) p1Count++;
+                    });
+                    return p1Count || (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
+                  }
+                  return (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
+                })()}</div>
+              </div>
+              <div className="text-gray-300 font-black text-lg">:</div>
+              <div className="text-center">
+                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{dispute.matchResult?.player2?.name || dispute.matchResult?.player2?.nickname || 'P2'}</div>
+                <div className="text-2xl font-black text-gray-900">{(() => {
+                  const claimDetails = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails : isPooker ? dispute.claimedPookerFrameDetails : dispute.claimedPoolRackDetails);
+                  if (Array.isArray(claimDetails) && claimDetails.length > 0) {
+                    let p2Count = 0;
+                    const p1Id = dispute.matchResult?.player1Id;
+                    const p2Id = dispute.matchResult?.player2Id;
+                    claimDetails.forEach(f => {
+                      const s1 = parseInt(f.player1Score) || 0;
+                      const s2 = parseInt(f.player2Score) || 0;
+                      if (String(f.winnerId) === String(p2Id) || s2 > s1) p2Count++;
+                    });
+                    return p2Count || (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
+                  }
+                  return (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
+                })()}</div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -771,13 +780,13 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
           {(() => {
             // Submitter Version (Original)
             const subFrames = safeParseJSON(isSnooker ? (dispute.snookerFrameDetails || dispute.matchResult?.snookerFrameDetails) :
-                                           isPooker ? (dispute.pookerFrameDetails || dispute.matchResult?.pookerFrameDetails) :
-                                           (dispute.poolRackDetails || dispute.matchResult?.poolRackDetails));
+              isPooker ? (dispute.pookerFrameDetails || dispute.matchResult?.pookerFrameDetails) :
+                (dispute.poolRackDetails || dispute.matchResult?.poolRackDetails));
 
             // Opponent/Claimant Version (New fields)
             const claimFrames = safeParseJSON(isSnooker ? dispute.claimedSnookerFrameDetails :
-                                             isPooker ? dispute.claimedPookerFrameDetails :
-                                             dispute.claimedPoolRackDetails);
+              isPooker ? dispute.claimedPookerFrameDetails :
+                dispute.claimedPoolRackDetails);
 
             const maxRows = Math.max(subFrames.length, claimFrames.length, 1);
             const rows = Array.from({ length: maxRows }, (_, i) => i);
@@ -785,11 +794,11 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
             return (
               <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
                 <div className="bg-gray-900 text-white px-5 py-4 flex justify-between items-center">
-                   <h3 className="text-xs font-black uppercase tracking-widest">{isPool ? 'Rack' : 'Frame'} Breakdown Comparison</h3>
-                   <div className="flex gap-4 text-[10px]">
-                      <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-400"></div> Submitter</span>
-                      <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-400"></div> Opponent</span>
-                   </div>
+                  <h3 className="text-xs font-black uppercase tracking-widest">{isPool ? 'Rack' : 'Frame'} Breakdown Comparison</h3>
+                  <div className="flex gap-4 text-[10px]">
+                    <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-400"></div> Submitter</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-400"></div> Opponent</span>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -898,57 +907,57 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
                                 />
                                 {/* Balls Potted & Pool Checkboxes */}
                                 {(isPool || isPooker) && (
-                                   <div className="flex flex-col items-center gap-1 mt-2">
-                                     <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
-                                        <input
-                                          type="number"
-                                          value={res.player1BallsPotted ?? ''}
-                                          onChange={(e) => handleFrameDetailChange(idx, 'player1BallsPotted', e.target.value)}
-                                          className="w-10 h-6 text-center bg-white border border-blue-100 rounded text-[10px] text-blue-600 font-bold focus:border-blue-500 outline-none"
-                                          placeholder="B1"
-                                        />
-                                        <span className="text-[8px] font-black text-gray-300">/</span>
-                                        <input
-                                          type="number"
-                                          value={res.player2BallsPotted ?? ''}
-                                          onChange={(e) => handleFrameDetailChange(idx, 'player2BallsPotted', e.target.value)}
-                                          className="w-10 h-6 text-center bg-white border border-red-100 rounded text-[10px] text-red-600 font-bold focus:border-red-500 outline-none"
-                                          placeholder="B2"
-                                        />
-                                     </div>
-                                     <div className="flex flex-wrap gap-2 justify-center mt-1">
-                                        <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
-                                          <input type="checkbox" checked={res.isSevenBallWin || false} onChange={e => handleFrameDetailChange(idx, 'isSevenBallWin', e.target.checked, true)} className="w-2.5 h-2.5 text-purple-600 rounded border-gray-300 cursor-pointer" />
-                                          <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">7-Ball</span>
-                                        </label>
-                                        <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
-                                          <input type="checkbox" checked={res.isBlackFinish || false} onChange={e => handleFrameDetailChange(idx, 'isBlackFinish', e.target.checked, true)} className="w-2.5 h-2.5 text-gray-800 rounded border-gray-300 cursor-pointer" />
-                                          <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">Black</span>
-                                        </label>
-                                        <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
-                                          <input type="checkbox" checked={res.isWhitewash || false} onChange={e => handleFrameDetailChange(idx, 'isWhitewash', e.target.checked, true)} className="w-2.5 h-2.5 text-blue-600 rounded border-gray-300 cursor-pointer" />
-                                          <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">W/W</span>
-                                        </label>
-                                     </div>
-                                   </div>
+                                  <div className="flex flex-col items-center gap-1 mt-2">
+                                    <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+                                      <input
+                                        type="number"
+                                        value={res.player1BallsPotted ?? ''}
+                                        onChange={(e) => handleFrameDetailChange(idx, 'player1BallsPotted', e.target.value)}
+                                        className="w-10 h-6 text-center bg-white border border-blue-100 rounded text-[10px] text-blue-600 font-bold focus:border-blue-500 outline-none"
+                                        placeholder="B1"
+                                      />
+                                      <span className="text-[8px] font-black text-gray-300">/</span>
+                                      <input
+                                        type="number"
+                                        value={res.player2BallsPotted ?? ''}
+                                        onChange={(e) => handleFrameDetailChange(idx, 'player2BallsPotted', e.target.value)}
+                                        className="w-10 h-6 text-center bg-white border border-red-100 rounded text-[10px] text-red-600 font-bold focus:border-red-500 outline-none"
+                                        placeholder="B2"
+                                      />
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 justify-center mt-1">
+                                      <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
+                                        <input type="checkbox" checked={res.isSevenBallWin || false} onChange={e => handleFrameDetailChange(idx, 'isSevenBallWin', e.target.checked, true)} className="w-2.5 h-2.5 text-purple-600 rounded border-gray-300 cursor-pointer" />
+                                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">7-Ball</span>
+                                      </label>
+                                      <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
+                                        <input type="checkbox" checked={res.isBlackFinish || false} onChange={e => handleFrameDetailChange(idx, 'isBlackFinish', e.target.checked, true)} className="w-2.5 h-2.5 text-gray-800 rounded border-gray-300 cursor-pointer" />
+                                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">Black</span>
+                                      </label>
+                                      <label className="flex items-center gap-1 cursor-pointer hover:bg-white p-0.5 rounded transition-colors">
+                                        <input type="checkbox" checked={res.isWhitewash || false} onChange={e => handleFrameDetailChange(idx, 'isWhitewash', e.target.checked, true)} className="w-2.5 h-2.5 text-blue-600 rounded border-gray-300 cursor-pointer" />
+                                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider">W/W</span>
+                                      </label>
+                                    </div>
+                                  </div>
                                 )}
                                 {(isSnooker || isPooker) && (
-                                   <div className="flex gap-1 ml-2">
-                                      <input
-                                        type="number"
-                                        value={res.player1Break ?? ''}
-                                        onChange={(e) => handleFrameDetailChange(idx, 'player1Break', e.target.value)}
-                                        className="w-10 h-7 text-center border rounded text-[9px] text-blue-600 font-bold"
-                                        placeholder="Brk1"
-                                      />
-                                      <input
-                                        type="number"
-                                        value={res.player2Break ?? ''}
-                                        onChange={(e) => handleFrameDetailChange(idx, 'player2Break', e.target.value)}
-                                        className="w-10 h-7 text-center border rounded text-[9px] text-red-600 font-bold"
-                                        placeholder="Brk2"
-                                      />
-                                   </div>
+                                  <div className="flex gap-1 ml-2">
+                                    <input
+                                      type="number"
+                                      value={res.player1Break ?? ''}
+                                      onChange={(e) => handleFrameDetailChange(idx, 'player1Break', e.target.value)}
+                                      className="w-10 h-7 text-center border rounded text-[9px] text-blue-600 font-bold"
+                                      placeholder="Brk1"
+                                    />
+                                    <input
+                                      type="number"
+                                      value={res.player2Break ?? ''}
+                                      onChange={(e) => handleFrameDetailChange(idx, 'player2Break', e.target.value)}
+                                      className="w-10 h-7 text-center border rounded text-[9px] text-red-600 font-bold"
+                                      placeholder="Brk2"
+                                    />
+                                  </div>
                                 )}
                               </div>
                             </td>
@@ -968,20 +977,25 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
           <div className="space-y-4">
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 text-center relative overflow-hidden">
               <div className="absolute top-0 right-0 p-2 text-[10px] font-black text-blue-500/50 uppercase">Claimant</div>
-               <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.submitter?.name || dispute.submitter?.nickname || 'Submitter'}</div>
+              <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.submitter?.name || dispute.submitter?.nickname || 'Submitter'}</div>
               <input
                 type="number"
+                readOnly={!isOverallPointsEnabled}
                 value={(isSnooker || isPooker) ? (submitterIsP1 ? resolutionData.finalPlayer1Frames : resolutionData.finalPlayer2Frames) : (submitterIsP1 ? resolutionData.finalPlayer1RackWins : resolutionData.finalPlayer2RackWins)}
-                onChange={(e) => handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer1Frames' : 'finalPlayer2Frames') : (submitterIsP1 ? 'finalPlayer1RackWins' : 'finalPlayer2RackWins'), e.target.value)}
-                className="w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-600 outline-none transition-all"
+                onChange={(e) => {
+                  if (!isOverallPointsEnabled) return;
+                  handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer1Frames' : 'finalPlayer2Frames') : (submitterIsP1 ? 'finalPlayer1RackWins' : 'finalPlayer2RackWins'), e.target.value)
+                }}
+                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-600 outline-none transition-all ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
               />
               <div className="text-[10px] font-bold text-gray-400 mt-3">{(isSnooker || isPooker) ? 'Final Frames' : 'Final Racks'}</div>
+              {!isOverallPointsEnabled && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
             </div>
             <button
               onClick={() => setResolutionData(p => ({ ...p, finalWinnerId: dispute.submitterId }))}
               className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2 ${resolutionData.finalWinnerId === dispute.submitterId
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100'
-                  : 'bg-white border-gray-100 text-gray-400'
+                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100'
+                : 'bg-white border-gray-100 text-gray-400'
                 }`}
             >
               Declare as Winner
@@ -992,20 +1006,25 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
           <div className="space-y-4">
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 text-center relative overflow-hidden">
               <div className="absolute top-0 right-0 p-2 text-[10px] font-black text-red-500/50 uppercase">Respondent</div>
-               <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.opponent?.name || dispute.opponent?.nickname || 'Opponent'}</div>
+              <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.opponent?.name || dispute.opponent?.nickname || 'Opponent'}</div>
               <input
                 type="number"
+                readOnly={!isOverallPointsEnabled}
                 value={(isSnooker || isPooker) ? (submitterIsP1 ? resolutionData.finalPlayer2Frames : resolutionData.finalPlayer1Frames) : (submitterIsP1 ? resolutionData.finalPlayer2RackWins : resolutionData.finalPlayer1RackWins)}
-                onChange={(e) => handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer2Frames' : 'finalPlayer1Frames') : (submitterIsP1 ? 'finalPlayer2RackWins' : 'finalPlayer1RackWins'), e.target.value)}
-                className="w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-red-600 outline-none transition-all"
+                onChange={(e) => {
+                  if (!isOverallPointsEnabled) return;
+                  handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer2Frames' : 'finalPlayer1Frames') : (submitterIsP1 ? 'finalPlayer2RackWins' : 'finalPlayer1RackWins'), e.target.value)
+                }}
+                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-red-600 outline-none transition-all ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
               />
               <div className="text-[10px] font-bold text-gray-400 mt-3">{(isSnooker || isPooker) ? 'Final Frames' : 'Final Racks'}</div>
+              {!isOverallPointsEnabled && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
             </div>
             <button
               onClick={() => setResolutionData(p => ({ ...p, finalWinnerId: dispute.opponentId }))}
               className={`w-full py-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2 ${resolutionData.finalWinnerId === dispute.opponentId
-                  ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-100'
-                  : 'bg-white border-gray-100 text-gray-400'
+                ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-100'
+                : 'bg-white border-gray-100 text-gray-400'
                 }`}
             >
               Declare as Winner

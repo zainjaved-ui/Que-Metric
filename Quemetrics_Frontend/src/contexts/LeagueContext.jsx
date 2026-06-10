@@ -202,6 +202,18 @@ export function LeagueProvider({ children }) {
     }
   }, []);
 
+  const removePlayerFromLeague = useCallback(async (leagueId, leaguePlayerId) => {
+    setGlobalLoading('players', true);
+    try {
+      const { data } = await apiClient.delete(`/leagues/${leagueId}/players/${leaguePlayerId}`);
+      return { success: true, message: data.message || 'Player removed successfully' };
+    } catch (error) {
+      return { success: false, error: error.response?.data?.error || 'Failed to remove player' };
+    } finally {
+      setGlobalLoading('players', false);
+    }
+  }, []);
+
   const analyzeLateEnrollment = useCallback(async (leagueId, reqData) => {
     setGlobalLoading('players', true);
     try {
@@ -589,6 +601,7 @@ export function LeagueProvider({ children }) {
     getLeaguePlayers,
     getAllPlayers,
     addPlayerToLeague,
+    removePlayerFromLeague,
     analyzeLateEnrollment,
     // Wizard methods
     getWizardClubs,
@@ -611,7 +624,7 @@ export function LeagueProvider({ children }) {
   }), [
     leagues, currentLeague, loading, loadingStates, getLeagues, getLeagueById, startLeague, createLeague, getAvailableGames, getLeaguesByGame,
     updateLeague, publishLeague, deleteLeague, generateFixtures, getFixtures, getLeagueDivisions, joinLeague, leaveLeague, joinByToken, joinByCode, getPublicLeagues,
-    getLeagueStandings, overridePlayerStandings, withdrawPlayer, getLeaguePlayers, getAllPlayers, addPlayerToLeague, analyzeLateEnrollment, getWizardClubs,
+    getLeagueStandings, overridePlayerStandings, withdrawPlayer, getLeaguePlayers, getAllPlayers, addPlayerToLeague, removePlayerFromLeague, analyzeLateEnrollment, getWizardClubs,
     getWizardGameSeasons, getAllVenues, createWizardLeague, updateWizardLeague, activateWizardLeague,
     getJoinRequests, approveJoinRequest, invitePlayerByEmail, finalizeLeague,
     overrideStandings, recordWalkover, recordMatchResult, advanceToNextRound, advanceToKnockout,
