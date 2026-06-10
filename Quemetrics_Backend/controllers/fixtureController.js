@@ -297,7 +297,7 @@ async function enrichBookingsWithVenueData(bookings) {
               venueName: foundVenue.name || foundVenue.venueName,
               name: foundVenue.name || foundVenue.venueName
             };
-            
+
             if (booking.venue) {
               booking.venue.venueName = enrichedVenue.venueName;
               booking.venue.name = enrichedVenue.name;
@@ -326,7 +326,7 @@ async function enrichBookingsWithVenueData(bookings) {
 exports.getFixtures = async (req, res) => {
   try {
     const { leagueId } = req.params;
-    const { divisionId, round, status } = req.query;
+    const { divisionId, round, status, playerId } = req.query;
 
     // Ensure fixture columns exist (e.g. date) before selection
     await ensureFixtureColumns();
@@ -366,7 +366,7 @@ exports.getFixtures = async (req, res) => {
               if (actualWinnerId && actualWinnerId !== f.winnerId) {
                 await f.update({ winnerId: actualWinnerId, loserId: (actualWinnerId === f.player1Id ? f.player2Id : f.player1Id) });
               }
-              if (actualWinnerId) await advanceKnockoutWinner(f.id, actualWinnerId).catch(() => {});
+              if (actualWinnerId) await advanceKnockoutWinner(f.id, actualWinnerId).catch(() => { });
             }
 
             // Also sync over straightforward Byes that might have been missed
@@ -375,7 +375,7 @@ exports.getFixtures = async (req, res) => {
               attributes: ['id', 'winnerId']
             });
             for (const f of byesToSync) {
-               await advanceKnockoutWinner(f.id, f.winnerId).catch(() => {});
+              await advanceKnockoutWinner(f.id, f.winnerId).catch(() => { });
             }
           } catch (err) {
             console.error("[getFixtures] KO repair error:", err.message);
@@ -391,7 +391,21 @@ exports.getFixtures = async (req, res) => {
     const where = { leagueId };
     if (divisionId) where.divisionId = divisionId;
     if (round) where.round = round;
-    if (status) where.status = status;
+
+    if (status) {
+      if (status.includes(',')) {
+        where.status = { [Op.in]: status.split(',').map(s => s.trim()) };
+      } else {
+        where.status = status;
+      }
+    }
+
+    if (playerId) {
+      where[Op.or] = [
+        { player1Id: playerId },
+        { player2Id: playerId }
+      ];
+    }
 
     let structure = league?.structure || {};
     if (typeof structure === 'string') {
@@ -400,8 +414,8 @@ exports.getFixtures = async (req, res) => {
 
     const leagueFormat2 = String(league?.format || '').toLowerCase();
     const structureFormat2 = String(structure?.format || '').toLowerCase();
-    const isKnockout = leagueFormat2 === 'knockout' || leagueFormat2 === 'groupsknockout' || 
-                      structureFormat2 === 'knockout' || structureFormat2 === 'groupsknockout';
+    const isKnockout = leagueFormat2 === 'knockout' || leagueFormat2 === 'groupsknockout' ||
+      structureFormat2 === 'knockout' || structureFormat2 === 'groupsknockout';
 
     const fixtures = await Fixture.findAll({
       where,
@@ -471,7 +485,7 @@ exports.getFixtures = async (req, res) => {
         const roundMatches = roundsMap[r];
         // A round is complete if all matches are completed, byes, or cancelled
         const isRoundComplete = roundMatches.every(m => m.status === 'completed' || m.status === 'bye' || m.status === 'cancelled');
-        
+
         if (isRoundComplete) {
           maxVisibleRound = r + 1;
         } else {
@@ -497,8 +511,8 @@ exports.getFixtures = async (req, res) => {
           const clubVenues = parseVenueCollections(booking.venue.venues);
           const subVenue = clubVenues.find(cv => cv && cv.id && normalizeVenueToken(cv.id).toLowerCase() === reqNorm);
           if (subVenue && subVenue.name) {
-             booking.venue.venueName = subVenue.name;
-             booking.venue.name = subVenue.name;
+            booking.venue.venueName = subVenue.name;
+            booking.venue.name = subVenue.name;
           }
         }
       }
@@ -551,7 +565,7 @@ exports.getFixtureById = async (req, res) => {
     // Enrich bookings with custom venue data
     if (fixture.bookings) {
       fixture.bookings = await enrichBookingsWithVenueData(fixture.bookings);
-      
+
       // Resolve exact sub-venue names
       if (fixture.bookings.length > 0) {
         const booking = fixture.bookings[0];
@@ -560,8 +574,8 @@ exports.getFixtureById = async (req, res) => {
           const clubVenues = parseVenueCollections(booking.venue.venues);
           const subVenue = clubVenues.find(cv => cv && cv.id && normalizeVenueToken(cv.id).toLowerCase() === reqNorm);
           if (subVenue && subVenue.name) {
-             booking.venue.venueName = subVenue.name;
-             booking.venue.name = subVenue.name;
+            booking.venue.venueName = subVenue.name;
+            booking.venue.name = subVenue.name;
           }
         }
       }
@@ -650,6 +664,16 @@ exports.recordMatchResult = async (req, res) => {
       try { matchRules = JSON.parse(matchRules); } catch (e) { matchRules = {}; }
     }
 
+    let isKnockoutFormat = false;
+    try {
+      if (league.structure) {
+        const structure = typeof league.structure === 'string' ? JSON.parse(league.structure) : league.structure;
+        if (structure.format === 'knockout' || structure.format === 'groupKnockout') {
+          isKnockoutFormat = true;
+        }
+      }
+    } catch (e) { }
+
     const bestOf = parseInt(matchRules.bestOf) || 3;
     const firstTo = Math.ceil(bestOf / 2);
     const handicapEnabled = matchRules.handicap?.enabled || false;
@@ -710,7 +734,7 @@ exports.recordMatchResult = async (req, res) => {
       }
       const tieBreakWinnerId = req.body.tieBreakWinnerId;
       const tieBreakMethod = req.body.tieBreakMethod;
-// Tied score
+      // Tied score
       if (adjP1Score > adjP2Score) {
         winnerId = fixture.player1Id;
         loserId = fixture.player2Id;
@@ -722,7 +746,13 @@ exports.recordMatchResult = async (req, res) => {
         if (tieBreakWinnerId) {
           winnerId = tieBreakWinnerId;
           loserId = tieBreakWinnerId === fixture.player1Id ? fixture.player2Id : fixture.player1Id;
-        } else if (!matchRules.allowDraw) {
+        } else if (!matchRules.allowDraw || isKnockoutFormat) {
+          if (isKnockoutFormat) {
+            return res.status(400).json({
+              success: false,
+              error: "Knockout matches cannot end in a tie. A tie-break winner is required."
+            });
+          }
           return res.status(400).json({
             success: false,
             error: "Match ended in a tie. A tie-break winner and method are required."
@@ -802,10 +832,16 @@ exports.recordMatchResult = async (req, res) => {
           winnerId = tieBreakWinnerId;
           loserId = tieBreakWinnerId === fixture.player1Id ? fixture.player2Id : fixture.player1Id;
         } else {
-          // A draw is blocked ONLY if allowDraw is explicitly false OR a noDrawRule is configured
+          // A draw is blocked ONLY if allowDraw is explicitly false OR a noDrawRule is configured OR it's a knockout format
           const poolAdminShouldBlockDraw = matchRules.allowDraw === false ||
-            (matchRules.noDrawRule && matchRules.noDrawRule !== 'none');
+            (matchRules.noDrawRule && matchRules.noDrawRule !== 'none') || isKnockoutFormat;
           if (poolAdminShouldBlockDraw) {
+            if (isKnockoutFormat) {
+              return res.status(400).json({
+                success: false,
+                error: "Knockout matches cannot end in a tie. A tie-break winner is required."
+              });
+            }
             return res.status(400).json({
               success: false,
               error: "Match ended in a tie. A tie-break winner and method are required."
@@ -863,10 +899,16 @@ exports.recordMatchResult = async (req, res) => {
           winnerId = tieBreakWinnerId;
           loserId = tieBreakWinnerId === fixture.player1Id ? fixture.player2Id : fixture.player1Id;
         } else {
-          // A draw is blocked ONLY if allowDraw is explicitly false OR a noDrawRule is configured
+          // A draw is blocked ONLY if allowDraw is explicitly false OR a noDrawRule is configured OR it's a knockout format
           const pookerAdminShouldBlockDraw = matchRules.allowDraw === false ||
-            (matchRules.noDrawRule && matchRules.noDrawRule !== 'none');
+            (matchRules.noDrawRule && matchRules.noDrawRule !== 'none') || isKnockoutFormat;
           if (pookerAdminShouldBlockDraw) {
+            if (isKnockoutFormat) {
+              return res.status(400).json({
+                success: false,
+                error: "Knockout matches cannot end in a tie. A tie-break winner is required."
+              });
+            }
             return res.status(400).json({
               success: false,
               error: "Match ended in a tie. A tie-break winner and method are required."

@@ -55,10 +55,12 @@ async function updateLeagueStandings(leagueId) {
     const results = await MatchResult.findAll({
         where: {
             leagueId,
-            resultStatus: { [Op.or]: [
-                sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'confirmed'),
-                sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'completed')
-            ]}
+            resultStatus: {
+                [Op.or]: [
+                    sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'confirmed'),
+                    sequelize.where(sequelize.fn('LOWER', sequelize.col('resultStatus')), 'completed')
+                ]
+            }
         }
     });
 
@@ -133,18 +135,26 @@ async function updateLeagueStandings(leagueId) {
 
         if (!p1 || !p2) continue;
 
-        // Handle Withdrawal Behaviour (e.g., Void all matches if option is set)
-        const withdrawalBehaviour = advanced?.withdrawal || 'keepPlayed';
-        if (withdrawalBehaviour === 'voidAll') {
+        // Parse rData EARLY so we can check if it's an explicit withdrawal auto-loss/whitewash
+        let rData = {};
+        try {
+            if (result.notes && result.notes.startsWith('{')) {
+                rData = JSON.parse(result.notes);
+            }
+        } catch (e) { }
+
+        const isWalkoverMatch = rData?.isWalkover || rData?.isManualWalkover || result.isWalkover === true || result.isWalkover === 1;
+        let withdrawalRule = rData?.withdrawalRule;
+
+        // Fallback for older walkover records that did not embed JSON
+        if (!withdrawalRule && isWalkoverMatch && result.notes === 'Automated bye due to player withdrawal.') {
             if (p1.status === 'withdrawn' || p2.status === 'withdrawn') {
-                console.log(`[standingsService] Voiding match ${result.id} because a player has withdrawn`);
-                continue;
+                withdrawalRule = 'whitewash';
             }
         }
 
-        // Check if this is a walkover match - walkovers should not affect standings/points
-        const rData = typeof result.resultData === 'string' ? JSON.parse(result.resultData || '{}') : (result.resultData || {});
-        const isWalkoverMatch = rData?.isWalkover || rData?.isManualWalkover || result.isWalkover === true || result.isWalkover === 1;
+        // Note: 'voidAll' behavior is handled at the very end of this calculation by zeroing out the withdrawn player's final stats, 
+        // to ensure active opponents keep their points from those historical games as requested by the user.
 
         // Participation Points - SKIP for walkovers
         if (pointsSystem.bonuses?.participation && !isWalkoverMatch) {
@@ -155,7 +165,7 @@ async function updateLeagueStandings(leagueId) {
             p2.points += pPoints;
         }
 
-        if (!isWalkoverMatch) {
+        if (!isWalkoverMatch || ['whitewash', 'forfeit'].includes(withdrawalRule)) {
             p1.matchesPlayed += 1;
             p2.matchesPlayed += 1;
         }
@@ -223,7 +233,7 @@ async function updateLeagueStandings(leagueId) {
             if (pointsSystem.bonuses?.breakOverX) {
                 const threshold = Number(pointsSystem.bonuses.breakValue) || 50;
                 const bPoints = Number(pointsSystem.bonuses.breakPoints) || 1;
-                
+
                 if (p1MatchHighBreak >= threshold) {
                     p1.points += bPoints;
                     p1.bonusPoints += bPoints;
@@ -310,46 +320,60 @@ async function updateLeagueStandings(leagueId) {
             const winnerIdStr = isP1Winner ? player1Id : player2Id;
             const loserIdStr = isP1Winner ? player2Id : player1Id;
 
-            if (!isWalkoverMatch) {
+            if (!isWalkoverMatch || ['whitewash', 'forfeit'].includes(withdrawalRule)) {
                 winner.matchesWon += 1;
                 loser.matchesLost += 1;
             }
 
             // Track walkover wins/losses separately
             if (isWalkoverMatch) {
-                winner.walkoverWins += 1;
-                loser.walkoverLosses += 1;
-                winner.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover win
-                loser.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover loss
+                if (!['whitewash', 'forfeit'].includes(withdrawalRule)) {
+                    winner.walkoverWins += 1;
+                    loser.walkoverLosses += 1;
+                }
+
+                // Only push WO records to history if they are standard walkovers
+                // We DO NOT update streak history for auto-withdrawals based on user request ('in standing table streak not update')
+                if (!['whitewash', 'forfeit'].includes(withdrawalRule)) {
+                    winner.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover win
+                    loser.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover loss
+                }
             } else {
                 winner.matchHistory.push({ date: result.createdAt, outcome: 'W' });
                 loser.matchHistory.push({ date: result.createdAt, outcome: 'L' });
             }
 
-            // Base Points - SKIP for walkovers
+            // Base Points
             if (!isWalkoverMatch) {
                 let wPoints = pointsSystem.win ?? 3;
                 let lPoints = pointsSystem.loss ?? 0;
 
                 winner.points += wPoints;
                 loser.points += lPoints;
-                
+
                 // Apply handicap bonus to winner
                 const winnerHandicap = isP1Winner ? p1HandicapBonus : p2HandicapBonus;
                 if (winnerHandicap > 0) {
                     winner.points += winnerHandicap;
                     winner.bonusPoints += winnerHandicap;
                 }
-                
+
                 winner.headToHead[loserIdStr] = (winner.headToHead[loserIdStr] || 0) + wPoints;
                 loser.headToHead[winnerIdStr] = (loser.headToHead[winnerIdStr] || 0) + lPoints;
+            } else if (withdrawalRule === 'whitewash') {
+                // Whitewash gives 2 points to winner
+                winner.points += 2;
+                winner.headToHead[loserIdStr] = (winner.headToHead[loserIdStr] || 0) + 2;
+                loser.headToHead[winnerIdStr] = (loser.headToHead[winnerIdStr] || 0) + 0;
+            }
 
+            if (!isWalkoverMatch) {
                 // Whitewash Statistic - ALWAYS count for stats if loser got 0 frames
                 const winnerScore = isP1Winner ? f1 : f2;
                 const loserScore = isP1Winner ? f2 : f1;
                 if (loserScore === 0 && winnerScore > 0) {
                     winner.whitewashes += 1;
-                    
+
                     // Award bonus points only if enabled in pointsSystem
                     if (pointsSystem.bonuses?.whitewash) {
                         const wwPoints = pointsSystem.bonuses.whitewashPoints || 1;
@@ -369,14 +393,14 @@ async function updateLeagueStandings(leagueId) {
             continue;
         }
 
-        // Standard Practice: Bye player is the winner for advancement, but no stats/points are awarded
+        // Standard Practice: Bye player advances without any stats, points, or streak impact.
+        // Byes are NOT real matches, so we deliberately do NOT push to matchHistory.
+        // This ensures the streak (W1, W2, L1 etc.) is calculated from real matches only.
         // player.matchesPlayed += 0;
         // player.matchesWon += 0;
         // player.points += 0;
         // player.framesWon += 0;
-
-        // Still record the 'W' in history for UI display if needed, but it won't affect calculated totals above
-        player.matchHistory.push({ date: bye.updatedAt || bye.createdAt, outcome: 'W' });
+        // matchHistory NOT pushed — bye does not affect streak.
     }
 
     // 4e. Calculate Swiss Tie-breaks if applicable
@@ -404,8 +428,8 @@ async function updateLeagueStandings(leagueId) {
                 score = player.opponents.reduce((sum, oppId) => {
                     const opponentPoints = statsMap[oppId]?.points || 0;
                     const ourMatchPointsAgainstThem = player.headToHead[oppId] || 0;
-                    const resultWeight = (ourMatchPointsAgainstThem >= (pointsSystem.win || 3)) ? 1 : 
-                                       (ourMatchPointsAgainstThem >= (pointsSystem.draw || 1)) ? 0.5 : 0;
+                    const resultWeight = (ourMatchPointsAgainstThem >= (pointsSystem.win || 3)) ? 1 :
+                        (ourMatchPointsAgainstThem >= (pointsSystem.draw || 1)) ? 0.5 : 0;
                     return sum + (opponentPoints * resultWeight);
                 }, 0);
             }
@@ -414,8 +438,36 @@ async function updateLeagueStandings(leagueId) {
     }
 
     // 5. Update each LeaguePlayer record
+    const withdrawalBehaviourFinal = advanced?.withdrawal || 'keepPlayed';
+
     const updatePromises = leaguePlayers.map(lp => {
         const stats = statsMap[lp.playerId];
+
+        // Final Rule Injection: "when i withdraw and option from league is void all matches then only withdraw player stats become 0 remiang player remian the sme"
+        if (withdrawalBehaviourFinal === 'voidAll' && stats.status === 'withdrawn') {
+            stats.matchesPlayed = 0;
+            stats.matchesWon = 0;
+            stats.matchesLost = 0;
+            stats.draws = 0;
+            stats.framesWon = 0;
+            stats.framesLost = 0;
+            stats.whitewashes = 0;
+            stats.highestBreak = 0;
+            stats.points = 0;
+            stats.participationPoints = 0;
+            stats.bonusPoints = 0;
+            stats.walkoverWins = 0;
+            stats.walkoverLosses = 0;
+            stats.breaks50Plus = 0;
+            stats.breaks100Plus = 0;
+            stats.ballsPotted = 0;
+            stats.ballsConceded = 0;
+            stats.sevenBallWins = 0;
+            stats.blackFinishes = 0;
+            stats.whitewashWins = 0;
+            stats.matchHistory = [];
+        }
+
         const winPercentage = stats.matchesPlayed > 0 ? (stats.matchesWon / stats.matchesPlayed) * 100 : 0;
 
         return lp.update({

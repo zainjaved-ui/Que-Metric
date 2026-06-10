@@ -10,6 +10,25 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const persistAuthSession = (authData, email, rememberMe) => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    const clearStorage = rememberMe ? sessionStorage : localStorage;
+
+    storage.setItem('accessToken', authData.accessToken);
+    storage.setItem('refreshToken', authData.refreshToken);
+    storage.setItem('user', JSON.stringify(authData.user));
+    storage.setItem('email', email);
+
+    clearStorage.removeItem('accessToken');
+    clearStorage.removeItem('refreshToken');
+    clearStorage.removeItem('user');
+    clearStorage.removeItem('email');
+  };
+
+  const getSessionPersistence = () => {
+    return localStorage.getItem('accessToken') ? 'local' : 'session';
+  };
+
   // ✅ Helper function to restore user from storage
   const restoreUserFromStorage = () => {
     try {
@@ -105,29 +124,7 @@ export function AuthProvider({ children }) {
       }
 
       // ✅ Save token and user based on "Remember Me" flag
-      if (rememberMe) {
-        // Save email + token in localStorage (persistent)
-        localStorage.setItem('accessToken', data.data.accessToken);
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('email', email);
-        // Clear sessionStorage if it exists
-        sessionStorage.removeItem('accessToken');
-        sessionStorage.removeItem('refreshToken');
-        sessionStorage.removeItem('user');
-        sessionStorage.removeItem('email');
-      } else {
-        // Save only token in sessionStorage (clears when browser closes)
-        sessionStorage.setItem('accessToken', data.data.accessToken);
-        sessionStorage.setItem('refreshToken', data.data.refreshToken);
-        sessionStorage.setItem('user', JSON.stringify(data.data.user));
-        sessionStorage.setItem('email', email);
-        // Clear localStorage to avoid conflicts
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        localStorage.removeItem('email');
-      }
+      persistAuthSession(data.data, email, rememberMe);
 
       setUser(data.data.user);
 
@@ -168,6 +165,42 @@ export function AuthProvider({ children }) {
       return {
         success: false,
         error: errorResponse?.error || 'Login failed',
+      };
+    }
+  };
+
+  const switchRole = async (role) => {
+    try {
+      const { data } = await apiClient.post('/auth/switch-role', { role });
+
+      if (!data.success || !data.data?.accessToken) {
+        return {
+          success: false,
+          error: data?.error || 'Failed to switch role',
+        };
+      }
+
+      const persistence = getSessionPersistence();
+      const rememberMe = persistence === 'local';
+      const email = data.data.user?.email || localStorage.getItem('email') || sessionStorage.getItem('email') || '';
+
+      persistAuthSession(data.data, email, rememberMe);
+      setUser(data.data.user);
+
+      const roleRoutes = {
+        player: '/player/dashboard',
+        organization: '/organization/dashboard',
+        venue_owner: '/venue-owner/dashboard',
+        super_admin: '/admin/dashboard',
+      };
+
+      navigate(roleRoutes[data.data.user.role] || '/');
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error || 'Failed to switch role',
       };
     }
   };
@@ -242,6 +275,7 @@ export function AuthProvider({ children }) {
     registerPlayer,
     registerOrganization,
     logout,
+    switchRole,
     restoreUserFromStorage,
     setUserAfterRoleSelection,
     isAuthenticated: !!user,

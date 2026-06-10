@@ -434,7 +434,7 @@ const LeagueManagement = () => {
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">My LEagues</h1>
-{/* Original header button preserved for revert:
+        {/* Original header button preserved for revert:
         <button
           onClick={() => setShowCreateModal(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -477,28 +477,26 @@ const LeagueManagement = () => {
                 { id: 'poker', label: 'Poker' }
               ].map(game => {
                 const isActive = selectedGameFilter === game.id;
-                const count = game.id === 'all' 
-                  ? leagues.length 
+                const count = game.id === 'all'
+                  ? leagues.length
                   : leagues.filter(l => {
-                      const g = (l.basicInfo?.gameName || l.gameName || '').toLowerCase();
-                      if (game.id === 'poker') return g === 'poker' || g === 'pooker';
-                      return g === game.id;
-                    }).length;
+                    const g = (l.basicInfo?.gameName || l.gameName || '').toLowerCase();
+                    if (game.id === 'poker') return g === 'poker' || g === 'pooker';
+                    return g === game.id;
+                  }).length;
 
                 return (
                   <button
                     key={game.id}
                     onClick={() => setSelectedGameFilter(game.id)}
-                    className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2.5 ${
-                      isActive 
-                        ? 'bg-[#132F45] text-white shadow-md shadow-[#132F45]/10 scale-[1.03]' 
-                        : 'bg-white text-gray-400 hover:bg-gray-50 border border-gray-100'
-                    }`}
+                    className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2.5 ${isActive
+                      ? 'bg-[#132F45] text-white shadow-md shadow-[#132F45]/10 scale-[1.03]'
+                      : 'bg-white text-gray-400 hover:bg-gray-50 border border-gray-100'
+                      }`}
                   >
                     {game.label}
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                      isActive ? 'bg-[#BA995D] text-white' : 'bg-gray-100 text-gray-400'
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${isActive ? 'bg-[#BA995D] text-white' : 'bg-gray-100 text-gray-400'
+                      }`}>
                       {count}
                     </span>
                   </button>
@@ -516,255 +514,255 @@ const LeagueManagement = () => {
               {filteredLeagues.map(league => (
                 <div
                   key={league.id}
-              onClick={() => {
-                if (league.status === 'draft') {
-                  if (league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved')) {
-                    const venueNames = league.pendingVenueNames?.length > 0 ? ` for: ${league.pendingVenueNames.join(', ')}` : '';
-                    alert(`Venue approval is pending${venueNames}. You cannot modify or activate this league until the venue owners approve your request.`);
-                    return;
-                  }
-                  openWizard(league.id, 1);
-                } else if (league.status === 'active') {
-                  setEditingLeagueDates(league);
-                }
-              }}
-              className={`border rounded-lg p-4 shadow hover:shadow-lg transition ${(league.status === 'draft' || league.status === 'active') ? 'cursor-pointer border-blue-200' : 'cursor-default'
-                }`}
-            >
-              <div className="flex justify-between items-start mb-2">
-                <h2 className="text-xl font-semibold">{league.basicInfo?.leagueName || league.name}</h2>
-                <div className="flex flex-col items-end gap-1">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[league.status]}`}>
-                    {league.status.charAt(0).toUpperCase() + league.status.slice(1)}
-                  </span>
+                  onClick={() => {
+                    if (league.status === 'draft') {
+                      if (league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved')) {
+                        const venueNames = league.pendingVenueNames?.length > 0 ? ` for: ${league.pendingVenueNames.join(', ')}` : '';
+                        alert(`Venue approval is pending${venueNames}. You cannot modify or activate this league until the venue owners approve your request.`);
+                        return;
+                      }
+                      openWizard(league.id, 1);
+                    } else if (league.status === 'active') {
+                      setEditingLeagueDates(league);
+                    }
+                  }}
+                  className={`border rounded-lg p-4 shadow hover:shadow-lg transition ${(league.status === 'draft' || league.status === 'active') ? 'cursor-pointer border-blue-200' : 'cursor-default'
+                    }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h2 className="text-xl font-semibold">{league.basicInfo?.leagueName || league.name}</h2>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${statusColors[league.status]}`}>
+                        {league.status.charAt(0).toUpperCase() + league.status.slice(1)}
+                      </span>
 
-                  {/* Visibility Badge */}
-                  <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider border ${league.visibility === 'public' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                    league.visibility === 'invite' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                      'bg-gray-50 text-gray-700 border-gray-200'
-                    }`}>
-                    {league.visibility?.toUpperCase() || 'PUBLIC'}
-                  </span>
+                      {/* Visibility Badge */}
+                      <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider border ${league.visibility === 'public' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                        league.visibility === 'invite' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                          'bg-gray-50 text-gray-700 border-gray-200'
+                        }`}>
+                        {league.visibility?.toUpperCase() || 'PUBLIC'}
+                      </span>
 
-                  {(league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved')) && (
-                    <span
-                      className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] uppercase font-bold tracking-wider border border-yellow-200"
-                      title={league.pendingVenueNames?.length > 0 ? `Pending: ${league.pendingVenueNames.join(', ')}` : 'Pending Venue Approval'}
-                    >
-                      Pending Venue Appr.
-                    </span>
-                  )}
-
-
-
-                </div>
-              </div>
-              {league.basicInfo?.gameName && <p className="text-gray-600">Game: {league.basicInfo.gameName}</p>}
-              <p className="text-gray-500 text-sm mt-2">
-                <span className="font-semibold">Registration:</span> {league.basicInfo?.registrationOpen || league.registrationOpen || '??'} – {league.basicInfo?.registrationClose || league.registrationClose || '??'}
-              </p>
-              {(league.startDate || league.endDate) && (
-                <p className="text-gray-500 text-sm mt-2">
-                  <span className="font-semibold">Season:</span> {league.startDate || '??'} – {league.endDate || '??'}
-                </p>
-              )}
-              {league.visibility !== 'private' && (league.status === 'registration_open' || (league.status === 'active' && league.lateJoinAllowed)) && (
-                <div className="mt-2 text-[11px] font-medium text-gray-500 flex flex-col items-start gap-1">
-                  <div className="flex items-center gap-1">
-                    Code: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 uppercase">{league.joinCode || 'N/A'}</span>
-                    {league.joinCode && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigator.clipboard.writeText(league.joinCode);
-                          alert('Join code copied to clipboard!');
-                        }}
-                        className="text-blue-500 hover:text-blue-700 ml-2 font-bold focus:outline-none transition"
-                      >
-                        📋 Copy Code
-                      </button>
-                    )}
-                  </div>
-                  {league.visibility === 'invite' && league.generalInviteToken && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const url = `${window.location.origin}/join?token=${league.generalInviteToken}&leagueId=${league.id}`;
-                          navigator.clipboard.writeText(url);
-                          alert('Invite link copied to clipboard!');
-                        }}
-                        className="text-purple-600 hover:text-purple-800 font-bold focus:outline-none flex items-center gap-1 transition"
-                      >
-                        🔗 Copy Link
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setInviteEmailLeague(league);
-                        }}
-                        className="text-green-600 hover:text-green-800 font-bold focus:outline-none flex items-center gap-1 ml-2 transition"
-                      >
-                        ✉️ Invite Email
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex justify-between items-center text-gray-500 text-sm mt-3 pt-2 border-t">
-                <div>
-                  <span className="font-semibold">Players:</span> {league.totalPlayers || 0}
-                </div>
-                {league.currentRound > 0 && (
-                  <div>
-                    <span className="font-semibold">Round:</span> {league.currentRound}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex flex-col gap-2">
-                {/* Status-specific lifecycle actions */}
-                {league.status === 'draft' && (
-                  <div className="flex flex-col gap-2">
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openWizard(league.id, 1); }}
-                        className="flex-1 px-3 py-1.5 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteLeague(league.id); }}
-                        className="flex-1 px-3 py-1.5 border border-red-500 text-red-600 text-xs font-semibold rounded hover:bg-red-50 transition"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {league.status === 'registration_open' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex gap-2">
-                      {(() => {
-                        const isVenuePending = league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved');
-                        return (
-                          <div className="relative flex-1 group/start">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); if (!isVenuePending) handleStartLeague(league.id); }}
-                              disabled={isVenuePending}
-                              title={isVenuePending ? 'Venue Approval Required before starting the league' : 'Start League'}
-                              className={`w-full px-3 py-2 text-sm font-semibold rounded transition flex items-center justify-center gap-1.5 ${isVenuePending
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
-                                }`}
-                            >
-                              {isVenuePending ? '🔒' : '▶'} Start League
-                            </button>
-                            {isVenuePending && (
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 hidden group-hover/start:flex items-center gap-1.5 bg-gray-800 text-white text-[10px] font-semibold px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap pointer-events-none">
-                                <span>⏳</span> Venue Approval Required
-                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {league.lateJoinAllowed && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setAddPlayersLeagueId(league.id); }}
-                          className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded hover:bg-gray-200 transition"
+                      {(league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved')) && (
+                        <span
+                          className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-[10px] uppercase font-bold tracking-wider border border-yellow-200"
+                          title={league.pendingVenueNames?.length > 0 ? `Pending: ${league.pendingVenueNames.join(', ')}` : 'Pending Venue Approval'}
                         >
-                          + Players
-                        </button>
+                          Pending Venue Appr.
+                        </span>
+                      )}
+
+
+
+                    </div>
+                  </div>
+                  {league.basicInfo?.gameName && <p className="text-gray-600">Game: {league.basicInfo.gameName}</p>}
+                  <p className="text-gray-500 text-sm mt-2">
+                    <span className="font-semibold">Registration:</span> {league.basicInfo?.registrationOpen || league.registrationOpen || '??'} – {league.basicInfo?.registrationClose || league.registrationClose || '??'}
+                  </p>
+                  {(league.startDate || league.endDate) && (
+                    <p className="text-gray-500 text-sm mt-2">
+                      <span className="font-semibold">Season:</span> {league.startDate || '??'} – {league.endDate || '??'}
+                    </p>
+                  )}
+                  {league.visibility !== 'private' && (league.status === 'registration_open' || (league.status === 'active' && league.lateJoinAllowed)) && (
+                    <div className="mt-2 text-[11px] font-medium text-gray-500 flex flex-col items-start gap-1">
+                      <div className="flex items-center gap-1">
+                        Code: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 uppercase">{league.joinCode || 'N/A'}</span>
+                        {league.joinCode && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(league.joinCode);
+                              alert('Join code copied to clipboard!');
+                            }}
+                            className="text-blue-500 hover:text-blue-700 ml-2 font-bold focus:outline-none transition"
+                          >
+                            📋 Copy Code
+                          </button>
+                        )}
+                      </div>
+                      {league.visibility === 'invite' && league.generalInviteToken && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const url = `${window.location.origin}/join?token=${league.generalInviteToken}&leagueId=${league.id}`;
+                              navigator.clipboard.writeText(url);
+                              alert('Invite link copied to clipboard!');
+                            }}
+                            className="text-purple-600 hover:text-purple-800 font-bold focus:outline-none flex items-center gap-1 transition"
+                          >
+                            🔗 Copy Link
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInviteEmailLeague(league);
+                            }}
+                            className="text-green-600 hover:text-green-800 font-bold focus:outline-none flex items-center gap-1 ml-2 transition"
+                          >
+                            ✉️ Invite Email
+                          </button>
+                        </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openWizard(league.id, 1); }}
-                        className="flex-1 px-3 py-1.5 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteLeague(league.id); }}
-                        className="flex-1 px-3 py-1.5 border border-red-500 text-red-600 text-xs font-semibold rounded hover:bg-red-50 transition"
-                      >
-                        Delete
-                      </button>
+                  )}
+                  <div className="flex justify-between items-center text-gray-500 text-sm mt-3 pt-2 border-t">
+                    <div>
+                      <span className="font-semibold">Players:</span> {league.totalPlayers || 0}
                     </div>
+                    {league.currentRound > 0 && (
+                      <div>
+                        <span className="font-semibold">Round:</span> {league.currentRound}
+                      </div>
+                    )}
                   </div>
-                )}
 
-                {(league.status === 'active' || league.status === 'completed') && (
-                  <div className="flex flex-col gap-2">
-                    {league.status === 'active' && (
-                      <>
+                  <div className="mt-4 flex flex-col gap-2">
+                    {/* Status-specific lifecycle actions */}
+                    {league.status === 'draft' && (
+                      <div className="flex flex-col gap-2">
+
                         <div className="flex gap-2">
-                          {league.fixtureStrategy === 'round_by_round' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleNextRound(league.id); }}
-                              className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded hover:bg-indigo-700 transition"
-                            >
-                              ⏭ Next Round
-                            </button>
-                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openWizard(league.id, 1); }}
+                            className="flex-1 px-3 py-1.5 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteLeague(league.id); }}
+                            className="flex-1 px-3 py-1.5 border border-red-500 text-red-600 text-xs font-semibold rounded hover:bg-red-50 transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
+                    {league.status === 'registration_open' && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          {(() => {
+                            const isVenuePending = league.venueApprovalStatus === 'pending' || league.isVenueApprovalPending || (league.venueApprovalRequestId && league.venueApproval?.status !== 'approved');
+                            return (
+                              <div className="relative flex-1 group/start">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); if (!isVenuePending) handleStartLeague(league.id); }}
+                                  disabled={isVenuePending}
+                                  title={isVenuePending ? 'Venue Approval Required before starting the league' : 'Start League'}
+                                  className={`w-full px-3 py-2 text-sm font-semibold rounded transition flex items-center justify-center gap-1.5 ${isVenuePending
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
+                                    }`}
+                                >
+                                  {isVenuePending ? '🔒' : '▶'} Start League
+                                </button>
+                                {isVenuePending && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 hidden group-hover/start:flex items-center gap-1.5 bg-gray-800 text-white text-[10px] font-semibold px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap pointer-events-none">
+                                    <span>⏳</span> Venue Approval Required
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {league.lateJoinAllowed && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setAddPlayersLeagueId(league.id); }}
-                              className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 transition"
-                            >
-                              + Add Late Joiner
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          {league.visibility === 'public' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setViewingJoinRequestsLeagueId(league.id); }}
                               className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded hover:bg-gray-200 transition"
                             >
-                              📋 Join Requests
-                            </button>
-                          )}
-                          {league.lateJoinAllowed && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setAssignDivisionLeagueId(league.id); }}
-                              className="flex-1 px-3 py-2 bg-purple-100 text-purple-700 text-sm font-semibold rounded hover:bg-purple-200 transition"
-                            >
-                              👤 Divisions
+                              + Players
                             </button>
                           )}
                         </div>
-                      </>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openWizard(league.id, 1); }}
+                            className="flex-1 px-3 py-1.5 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteLeague(league.id); }}
+                            className="flex-1 px-3 py-1.5 border border-red-500 text-red-600 text-xs font-semibold rounded hover:bg-red-50 transition"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
                     )}
 
-                    <div className="flex gap-2">
-                      {league.status === 'active' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setEditingLeagueDates(league); }}
-                          className="flex-1 px-3 py-2 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
-                        >
-                          Edit Settings
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/organization/leaguematchmanagement?leagueId=${league.id}`);
-                        }}
-                        className={`px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition flex items-center justify-center gap-2 ${league.status === 'active' ? 'flex-1' : 'w-full'}`}
-                      >
-                        <FaEye size={12} className="text-current" /> View Detail
-                      </button>
-                    </div>
+                    {(league.status === 'active' || league.status === 'completed') && (
+                      <div className="flex flex-col gap-2">
+                        {league.status === 'active' && (
+                          <>
+                            <div className="flex gap-2">
+                              {league.fixtureStrategy === 'round_by_round' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleNextRound(league.id); }}
+                                  className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm font-semibold rounded hover:bg-indigo-700 transition"
+                                >
+                                  ⏭ Next Round
+                                </button>
+                              )}
+
+                              {league.lateJoinAllowed && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setAddPlayersLeagueId(league.id); }}
+                                  className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 transition"
+                                >
+                                  + Add Late Joiner
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2">
+                              {league.visibility === 'public' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setViewingJoinRequestsLeagueId(league.id); }}
+                                  className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded hover:bg-gray-200 transition"
+                                >
+                                  📋 Join Requests
+                                </button>
+                              )}
+                              {league.lateJoinAllowed && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setAssignDivisionLeagueId(league.id); }}
+                                  className="flex-1 px-3 py-2 bg-purple-100 text-purple-700 text-sm font-semibold rounded hover:bg-purple-200 transition"
+                                >
+                                  👤 Divisions
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        <div className="flex gap-2">
+                          {league.status === 'active' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingLeagueDates(league); }}
+                              className="flex-1 px-3 py-2 border border-blue-500 text-blue-600 text-xs font-semibold rounded hover:bg-blue-50 transition"
+                            >
+                              Edit Settings
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/organization/leaguematchmanagement?leagueId=${league.id}`);
+                            }}
+                            className={`px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition flex items-center justify-center gap-2 ${league.status === 'active' ? 'flex-1' : 'w-full'}`}
+                          >
+                            <FaEye size={12} className="text-current" /> View Detail
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
               ))}
             </div>
           )}
@@ -866,7 +864,7 @@ const EditLeagueDatesModal = ({ league, onClose, onSave }) => {
       setError('Start date must be before end date');
       return;
     }
-    
+
     setLoading(true);
     setError(null);
     try {
@@ -882,14 +880,14 @@ const EditLeagueDatesModal = ({ league, onClose, onSave }) => {
     }
   };
 
-  const seasonRangeText = league?.season 
-    ? `Season: ${league.season.startDate} to ${league.season.endDate}` 
+  const seasonRangeText = league?.season
+    ? `Season: ${league.season.startDate} to ${league.season.endDate}`
     : null;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-[#132F45]/30 backdrop-blur-md overflow-y-auto">
       <div className="bg-white rounded-[3.5rem] w-full max-w-md overflow-hidden shadow-2xl border border-gray-100 flex flex-col animate-in fade-in zoom-in duration-300">
-        
+
         {/* Header */}
         <div className="px-8 pt-8 pb-4 border-b border-gray-50 bg-gradient-to-b from-[#FAFAFA] to-white relative text-left">
           <div className="flex items-center gap-3 mb-2">
@@ -921,7 +919,7 @@ const EditLeagueDatesModal = ({ league, onClose, onSave }) => {
 
           <div className="space-y-2">
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Start Date</label>
-            <input 
+            <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
@@ -934,7 +932,7 @@ const EditLeagueDatesModal = ({ league, onClose, onSave }) => {
 
           <div className="space-y-2">
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">End Date</label>
-            <input 
+            <input
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
@@ -2228,7 +2226,7 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
 // Full 9-Step Wizard (unchanged – keep your existing LeagueCreationWizard)
 // ----------------------------------------------------------------------
 const LeagueCreationWizard = ({ initialData, onSaveDraft, onComplete, onClose, onOpenAddPlayers, initialStep = 1 }) => {
-  const { loading: contextLoading, getWizardClubs, getWizardGameSeasons, updateWizardLeague, getLeaguePlayers, getAllVenues, getAllPlayers } = useLeague();
+  const { loading: contextLoading, getWizardClubs, getWizardGameSeasons, updateWizardLeague, getLeaguePlayers, getAllVenues, getAllPlayers, removePlayerFromLeague } = useLeague();
   // (Your existing LeagueCreationWizard code – no changes needed)
   const totalSteps = 10;
 
@@ -3872,7 +3870,24 @@ const LeagueCreationWizard = ({ initialData, onSaveDraft, onComplete, onClose, o
                         {(lp.player && (lp.player.name || lp.player.nickname)) || lp.playerId}
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
+                            const isTemp = typeof lp.id === 'string' && lp.id.startsWith('temp-');
+                            const backendLeaguePlayerId = !isTemp && lp.id ? lp.id : null;
+
+                            if (backendLeaguePlayerId && initialData?.id) {
+                              try {
+                                const result = await removePlayerFromLeague(initialData.id, backendLeaguePlayerId);
+                                if (!result.success) {
+                                  alert(result.error || 'Failed to remove player from league');
+                                  return;
+                                }
+                              } catch (err) {
+                                console.error('Error removing player:', err);
+                                alert('An error occurred while removing the player.');
+                                return;
+                              }
+                            }
+
                             const removedPlayer = lp.player ? { id: lp.playerId, name: lp.player.name, nickname: lp.player.nickname, email: lp.player.email } : null;
                             if (removedPlayer) setClubPlayers(prev => [...prev, removedPlayer]);
                             setLeaguePlayers(prev => prev.filter(x => (x.id || x.playerId) !== (lp.id || lp.playerId)));
