@@ -10,6 +10,7 @@ router.get("/verify-email", authController.verifyEmail);
 router.post("/resend-verification", validate(schemas.resendVerification), authController.resendVerification);
 router.post("/login", validate(schemas.login), authController.login);
 router.post("/confirm-role-selection", authController.confirmRoleSelection);  // ✅ NEW: No auth needed, no validation schema (simple payload)
+router.post("/switch-role", authenticate, authController.switchRole);
 router.post("/refresh-token", validate(schemas.refreshToken), authController.refreshToken);
 router.post("/logout", authenticate, authController.logout);
 router.post("/forgot-password", validate(schemas.forgotPassword), authController.forgotPassword);

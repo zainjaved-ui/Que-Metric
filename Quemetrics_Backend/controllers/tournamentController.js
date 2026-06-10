@@ -1851,7 +1851,8 @@ exports.getTournaments = async (req, res) => {
   try {
     const { userId, role } = req.user;
     // Parse query parameters with explicit parsing and add debug logging
-    let { sport, tier, status, organizationId, ranked } = req.query;
+    let { sport, tier, status, organizationId, ranked, honors } = req.query;
+    const honorsView = honors === "true";
     const page = parseInt(req.query.page || "1", 10);
     const limit = parseInt(req.query.limit || "20", 10);
 
@@ -1866,7 +1867,7 @@ exports.getTournaments = async (req, res) => {
     if (organizationId) {
       where.organizationId = organizationId;
       console.log("[getTournaments] Using query param organizationId:", organizationId);
-    } else if (role === "organization") {
+    } else if (role === "organization" && !honorsView) {
       // For organization users, automatically filter by their organization
       try {
         const organization = await Organization.findOne({ where: { userId } });
@@ -1881,7 +1882,7 @@ exports.getTournaments = async (req, res) => {
         console.error("[getTournaments] Organization lookup error:", orgError.message);
         throw orgError;
       }
-    } else if (role === "club_admin" || role === "tournament_manager") {
+    } else if (!honorsView && (role === "club_admin" || role === "tournament_manager")) {
       // For club admins and tournament managers, filter to tournaments they manage
       // Get all clubs where this user is an admin/manager
       try {

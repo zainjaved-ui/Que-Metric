@@ -41,6 +41,7 @@ import TournamentBracket from '../pages/player/TournamentBracket';
 import TournamentResults from '../pages/player/TournamentResults';
 import TournamentMatchHistory from '../pages/player/TournamentMatchHistory';
 import PlayerRankings from '../pages/player/Rankings';
+import Honors from '../pages/Honors';
 
 function DetailsRedirect() {
   const { tournamentId } = useParams();
@@ -173,6 +174,14 @@ export default function AppRoutes() {
           element={
             <EmailVerifiedRoute>
               <PlayerRankings />
+            </EmailVerifiedRoute>
+          }
+        />
+        <Route
+          path="honors"
+          element={
+            <EmailVerifiedRoute>
+              <Honors />
             </EmailVerifiedRoute>
           }
         />
@@ -379,6 +388,14 @@ export default function AppRoutes() {
           element={
             <EmailVerifiedRoute>
               <LeagueStats />
+            </EmailVerifiedRoute>
+          }
+        />
+        <Route
+          path="honors"
+          element={
+            <EmailVerifiedRoute>
+              <Honors />
             </EmailVerifiedRoute>
           }
         />

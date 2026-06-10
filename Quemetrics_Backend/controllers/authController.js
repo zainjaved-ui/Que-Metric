@@ -1040,6 +1040,7 @@ exports.confirmRoleSelection = async (req, res) => {
       playerId: playerProfile?.id || null,
       organizationId: orgProfile?.id || null,
       venueOwnerId: venueOwnerProfile?.id || null,
+      availableRoles: tokenData.availableRoles,
     };
 
     if (role === "organization" && orgProfile) {
@@ -1072,6 +1073,121 @@ exports.confirmRoleSelection = async (req, res) => {
     });
   } catch (error) {
     console.error("[confirmRoleSelection] Error:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+exports.switchRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId || !role) {
+      return res.status(400).json({
+        success: false,
+        error: "User and target role are required"
+      });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    if (user.status === "Suspended") {
+      return res.status(403).json({ success: false, error: "Account is suspended. Please contact support." });
+    }
+    if (user.status === "Anonymised") {
+      return res.status(403).json({ success: false, error: "This account has been anonymised." });
+    }
+
+    const orgProfile = await Organization.findOne({
+      where: { userId: user.id },
+      attributes: ["id", "organizationName"],
+    });
+    const playerProfile = await Player.findOne({
+      where: { userId: user.id },
+      attributes: ["id", "name", "badgeType"],
+    });
+    const venueOwnerProfile = await VenueOwner.findOne({
+      where: { userId: user.id },
+      attributes: ["id", "name", "venueName"],
+    });
+
+    const availableRoles = [];
+    if (orgProfile) {
+      availableRoles.push({
+        role: "organization",
+        id: user.id,
+        organizationId: orgProfile.id,
+        organizationName: orgProfile.organizationName,
+      });
+    }
+    if (playerProfile) {
+      availableRoles.push({
+        role: "player",
+        id: user.id,
+        playerId: playerProfile.id,
+        playerName: playerProfile.name,
+      });
+    }
+    if (venueOwnerProfile) {
+      availableRoles.push({
+        role: "venue_owner",
+        id: user.id,
+        venueOwnerId: venueOwnerProfile.id,
+        venueOwnerName: venueOwnerProfile.name,
+      });
+    }
+
+    if (availableRoles.length === 0) {
+      availableRoles.push({ role: user.role, id: user.id });
+    }
+
+    const selectedRoleData = availableRoles.find((item) => item.role === role);
+    if (!selectedRoleData) {
+      return res.status(400).json({ success: false, error: "Invalid role selection" });
+    }
+
+    let userData = {
+      id: user.id,
+      email: user.email,
+      role,
+      primaryRole: user.role,
+      status: user.status,
+      emailVerified: user.emailVerified,
+      playerId: playerProfile?.id || null,
+      organizationId: orgProfile?.id || null,
+      venueOwnerId: venueOwnerProfile?.id || null,
+      availableRoles,
+    };
+
+    if (role === "organization" && orgProfile) {
+      userData.organizationName = orgProfile.organizationName;
+    }
+    if (role === "player" && playerProfile) {
+      userData.playerName = playerProfile.name;
+      userData.badgeType = playerProfile.badgeType;
+    }
+    if (role === "venue_owner" && venueOwnerProfile) {
+      userData.venueOwnerName = venueOwnerProfile.name;
+      userData.venueName = venueOwnerProfile.venueName;
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user.id, role);
+    await user.update({ refreshToken, lastLogin: new Date() });
+
+    res.json({
+      success: true,
+      data: {
+        accessToken,
+        refreshToken,
+        user: userData,
+      },
+      message: "Role switched successfully",
+    });
+  } catch (error) {
+    console.error("[switchRole] Error:", error);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 };

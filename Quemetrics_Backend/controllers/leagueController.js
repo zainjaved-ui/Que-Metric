@@ -1334,7 +1334,8 @@ exports.getLeagues = async (req, res) => {
   const { resolveVenueOwnerMerged } = require("../utils/venueOwnerEmbedded");
   try {
     const { userId, role } = req.user;
-    const { sport, status, organizationId, onlyPublic } = req.query;
+    const { sport, status, organizationId, onlyPublic, honors } = req.query;
+    const honorsView = honors === 'true';
     const where = {};
 
     if (sport) where.sport = sport;
@@ -1352,7 +1353,7 @@ exports.getLeagues = async (req, res) => {
       } else {
         return res.json({ success: true, data: [], message: "No organization found for this user" });
       }
-    } else if (role === "player") {
+    } else if (role === "player" && !honorsView) {
       // Find the player record for this user (Unify by email for dual-role users)
       const { Player, User } = require("../models");
       const { Op } = require("sequelize");
@@ -1411,18 +1412,21 @@ exports.getLeagues = async (req, res) => {
     if (!resolvedOrgId && role !== 'super_admin' && where.organizationId) {
       resolvedOrgId = where.organizationId;
     }
-    const cacheKeyObj = { sport: sport || null, status: status || null, organizationId: resolvedOrgId || null, role };
+    const cacheKeyObj = { sport: sport || null, status: status || null, organizationId: resolvedOrgId || null, role, honors: honorsView };
     const cacheKey = `leagues:${Buffer.from(JSON.stringify(cacheKeyObj)).toString('base64')}`;
+    const bypassCache = req.query.cacheBuster != null || req.query.noCache === 'true';
 
     // Try cache read (safe to fail to avoid breaking the endpoint)
-    try {
-      const cached = await cache.get(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return res.json({ success: true, data: parsed, message: 'Leagues retrieved (cache)' });
+    if (!bypassCache) {
+      try {
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return res.json({ success: true, data: parsed, message: 'Leagues retrieved (cache)' });
+        }
+      } catch (err) {
+        console.warn('Cache read failed for leagues:', err && err.message ? err.message : err);
       }
-    } catch (err) {
-      console.warn('Cache read failed for leagues:', err && err.message ? err.message : err);
     }
 
     const rawLeagues = await League.findAll({
@@ -1544,11 +1548,13 @@ exports.getLeagues = async (req, res) => {
     });
 
     // Cache the result for a short period to speed up subsequent requests
-    try {
-      const ttl = parseInt(process.env.LEAGUES_CACHE_TTL || '60', 10);
-      await cache.set(cacheKey, JSON.stringify(leaguesWithCounts), 'EX', ttl);
-    } catch (err) {
-      console.warn('Cache write failed for leagues:', err && err.message ? err.message : err);
+    if (!bypassCache) {
+      try {
+        const ttl = parseInt(process.env.LEAGUES_CACHE_TTL || '60', 10);
+        await cache.set(cacheKey, JSON.stringify(leaguesWithCounts), 'EX', ttl);
+      } catch (err) {
+        console.warn('Cache write failed for leagues:', err && err.message ? err.message : err);
+      }
     }
 
     res.json({ success: true, data: leaguesWithCounts, message: "Leagues retrieved" });
