@@ -326,7 +326,7 @@ async function enrichBookingsWithVenueData(bookings) {
 exports.getFixtures = async (req, res) => {
   try {
     const { leagueId } = req.params;
-    const { divisionId, round, status } = req.query;
+    const { divisionId, round, status, playerId } = req.query;
 
     // Ensure fixture columns exist (e.g. date) before selection
     await ensureFixtureColumns();
@@ -391,7 +391,21 @@ exports.getFixtures = async (req, res) => {
     const where = { leagueId };
     if (divisionId) where.divisionId = divisionId;
     if (round) where.round = round;
-    if (status) where.status = status;
+
+    if (status) {
+      if (status.includes(',')) {
+        where.status = { [Op.in]: status.split(',').map(s => s.trim()) };
+      } else {
+        where.status = status;
+      }
+    }
+
+    if (playerId) {
+      where[Op.or] = [
+        { player1Id: playerId },
+        { player2Id: playerId }
+      ];
+    }
 
     let structure = league?.structure || {};
     if (typeof structure === 'string') {

@@ -3157,7 +3157,7 @@ exports.getPendingResults = async (req, res) => {
         {
           model: League,
           as: "league",
-          attributes: ["id", "name", "sport", "reporting"],
+          attributes: ["id", "name", "sport", "reporting", "matchRules"],
           required: false,
         },
         {
@@ -3175,7 +3175,7 @@ exports.getPendingResults = async (req, res) => {
             {
               model: League,
               as: "league",
-              attributes: ["id", "name", "sport", "reporting"],
+              attributes: ["id", "name", "sport", "reporting", "matchRules"],
               required: false,
             },
             {
@@ -3297,7 +3297,7 @@ exports.getMySubmittedResults = async (req, res) => {
         {
           model: League,
           as: "league",
-          attributes: ["id", "name", "sport", "reporting"],
+          attributes: ["id", "name", "sport", "reporting", "matchRules"],
           required: false,
         },
         {
@@ -3315,7 +3315,7 @@ exports.getMySubmittedResults = async (req, res) => {
             {
               model: League,
               as: "league",
-              attributes: ["id", "name", "sport", "reporting"],
+              attributes: ["id", "name", "sport", "reporting", "matchRules"],
               required: false,
             },
             {
@@ -3509,7 +3509,7 @@ exports.getCompletedResults = async (req, res) => {
         {
           model: League,
           as: "league",
-          attributes: ["id", "name", "sport", "reporting"],
+          attributes: ["id", "name", "sport", "reporting", "matchRules"],
           required: false,
         },
         {
@@ -3527,7 +3527,7 @@ exports.getCompletedResults = async (req, res) => {
             {
               model: League,
               as: "league",
-              attributes: ["id", "name", "sport", "reporting"],
+              attributes: ["id", "name", "sport", "reporting", "matchRules"],
               required: false,
             },
             {
@@ -3800,7 +3800,7 @@ exports.getDisputesBySport = async (req, res) => {
         {
           model: League,
           as: "league",
-          attributes: ["id", "name", "sport", "organizationId", "reporting"],
+          attributes: ["id", "name", "sport", "organizationId", "reporting", "matchRules"],
           required: false,
         },
         {
@@ -4068,7 +4068,7 @@ exports.getDisputeDetails = async (req, res) => {
         {
           model: League,
           as: "league",
-          attributes: ["id", "name", "sport", "format", "organizationId"],
+          attributes: ["id", "name", "sport", "format", "organizationId", "matchRules"],
         },
         {
           model: Tournament,

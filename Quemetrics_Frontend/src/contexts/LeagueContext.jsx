@@ -363,10 +363,10 @@ export function LeagueProvider({ children }) {
     }
   }, []);
 
-  const withdrawPlayer = useCallback(async (leagueId, leaguePlayerId) => {
+  const withdrawPlayer = useCallback(async (leagueId, leaguePlayerId, dropoutRule = 'whitewash') => {
     setGlobalLoading('action', true);
     try {
-      const { data: response } = await apiClient.post(`/leagues/${leagueId}/players/${leaguePlayerId}/withdraw`);
+      const { data: response } = await apiClient.post(`/leagues/${leagueId}/players/${leaguePlayerId}/withdraw`, { dropoutRule });
       return { success: true, message: response.message || 'Player withdrawn successfully', data: response.data };
     } catch (error) {
       return { success: false, error: error.response?.data?.error || 'Failed to withdraw player' };

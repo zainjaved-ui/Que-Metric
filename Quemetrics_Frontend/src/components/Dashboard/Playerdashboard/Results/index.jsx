@@ -211,9 +211,9 @@ export default function Results() {
             </div>
             <div className="flex items-center gap-2">
               <div className={`px-2.5 py-1 rounded-lg text-[7px] font-black uppercase tracking-wider ${result.isWalkover ? 'bg-orange-50 text-orange-600 border border-orange-100' :
-                  result.resultStatus === 'Confirmed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                    result.resultStatus === 'Pending' || result.resultStatus === 'Awaiting Admin Approval' ? 'bg-amber-50 text-amber-600 border border-amber-100 animate-pulse' :
-                      'bg-red-50 text-red-600 border border-red-100'
+                result.resultStatus === 'Confirmed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                  result.resultStatus === 'Pending' || result.resultStatus === 'Awaiting Admin Approval' ? 'bg-amber-50 text-amber-600 border border-amber-100 animate-pulse' :
+                    'bg-red-50 text-red-600 border border-red-100'
                 }`}>
                 {result.isWalkover ? 'WALKOVER' : (result.resultStatus === 'Awaiting Admin Approval' ? 'Pending Approval' : result.resultStatus)}
               </div>
@@ -458,8 +458,8 @@ export default function Results() {
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setSelectedLeagueFilter('all'); }}
                 className={`relative px-6 py-3 font-black text-[8.5px] uppercase tracking-widest flex items-center gap-2.5 whitespace-nowrap transition-all duration-300 ${activeTab === tab.id
-                    ? 'text-[#132F45]'
-                    : 'text-gray-400 hover:text-[#132F45] hover:bg-[#FAFAFA]'
+                  ? 'text-[#132F45]'
+                  : 'text-gray-400 hover:text-[#132F45] hover:bg-[#FAFAFA]'
                   }`}
               >
                 <tab.icon size={11} className={activeTab === tab.id ? 'text-[#BA995D]' : 'text-gray-300'} />
@@ -622,11 +622,19 @@ function DisputeModal({ isOpen, onClose, result, claimedScore, setClaimedScore, 
   const matchRules = result?.league?.matchRules || result?.booking?.league?.matchRules;
   let parsedRules = {};
   if (typeof matchRules === 'string') {
-    try { parsedRules = JSON.parse(matchRules); } catch (e) { }
+    try { parsedRules = JSON.parse(matchRules); } catch (_e) { /* invalid JSON, use empty defaults */ }
   } else if (matchRules) {
     parsedRules = matchRules;
   }
-  const isOverallPointsEnabled = !matchRules || parsedRules.scoreDetail === 'points';
+
+  // 'frame_by_frame' means the overall score must be derived automatically from per-frame data.
+  // 'overall' (or no setting) means the player can directly edit the total score.
+  const isFrameByFrame = parsedRules.scoreDetail === 'frame_by_frame';
+
+  // Live-computed totals from current frame edits (used for the read-only display in frame_by_frame mode)
+  const frameDetails = isSnooker ? claimedScore.snookerFrameDetails : isPooker ? claimedScore.pookerFrameDetails : claimedScore.poolRackDetails;
+  const computedP1Total = (frameDetails || []).filter(f => (parseInt(f.player1Score) || 0) > (parseInt(f.player2Score) || 0)).length;
+  const computedP2Total = (frameDetails || []).filter(f => (parseInt(f.player2Score) || 0) > (parseInt(f.player1Score) || 0)).length;
 
   const footer = (
     <div className="flex gap-3 justify-end w-full px-6 pb-6">
@@ -641,7 +649,27 @@ function DisputeModal({ isOpen, onClose, result, claimedScore, setClaimedScore, 
       <Button
         variant="primary"
         className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20"
-        onClick={() => onSubmit(disputeReason, claimedScore)}
+        onClick={() => {
+          // In frame-by-frame mode, always inject the computed totals into the payload
+          // so the backend gets accurate derived values, not stale state.
+          if (isFrameByFrame) {
+            const computedWinner = computedP1Total > computedP2Total
+              ? result.player1Id
+              : computedP2Total > computedP1Total
+                ? result.player2Id
+                : null;
+            const mergedScore = {
+              ...claimedScore,
+              ...(isSnooker ? { player1Frames: computedP1Total, player2Frames: computedP2Total }
+                : isPooker ? { player1Frames: computedP1Total, player2Frames: computedP2Total }
+                  : { player1RackWins: computedP1Total, player2RackWins: computedP2Total }),
+              winnerId: computedWinner,
+            };
+            onSubmit(disputeReason, mergedScore);
+          } else {
+            onSubmit(disputeReason, claimedScore);
+          }
+        }}
         loading={loading}
       >
         Confirm Dispute Results
@@ -705,69 +733,128 @@ function DisputeModal({ isOpen, onClose, result, claimedScore, setClaimedScore, 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-5">
-            <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <div className="w-1 h-2.5 bg-[#BA995D] rounded-full" /> Corrected Totals
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1">{result.player1?.name}</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    readOnly={!isOverallPointsEnabled}
-                    value={((isSnooker || isPooker) ? claimedScore.player1Frames : claimedScore.player1RackWins) ?? ''}
-                    onChange={(e) => {
-                      if (!isOverallPointsEnabled) return;
-                      const val = e.target.value;
-                      setClaimedScore((p) => ({
-                        ...p,
-                        [(isSnooker || isPooker) ? 'player1Frames' : 'player1RackWins']: val === '' ? '' : (parseInt(val, 10) || 0),
-                      }));
-                    }}
-                    className={`w-full border-none bg-blue-50/50 rounded-xl py-3 font-black text-center text-xl text-[#132F45] focus:ring-2 focus:ring-[#132F45]/10 shadow-inner ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
-                  <div className="absolute top-1/2 left-3 -translate-y-1/2 text-[8px] font-black text-blue-300 uppercase">PTS</div>
-                  {!isOverallPointsEnabled && <div className="text-[7px] text-center text-gray-400 mt-1 uppercase font-bold sticky">Auto-calculated</div>}
+
+            {/* ── Frame-by-Frame Mode: read-only auto-calculated scoreboard ── */}
+            {isFrameByFrame ? (
+              <>
+                <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1 h-2.5 bg-[#BA995D] rounded-full" /> Auto Score
+                </h3>
+
+                {/* Info banner */}
+                <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                  <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+                  </svg>
+                  <p className="text-[9px] font-bold text-blue-700 leading-relaxed">
+                    This league uses <span className="font-black uppercase">Frame-by-Frame</span> scoring. Edit the individual frame scores below — the overall score is automatically calculated and cannot be changed manually.
+                  </p>
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1 text-right">{result.player2?.name}</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    readOnly={!isOverallPointsEnabled}
-                    value={((isSnooker || isPooker) ? claimedScore.player2Frames : claimedScore.player2RackWins) ?? ''}
-                    onChange={(e) => {
-                      if (!isOverallPointsEnabled) return;
-                      const val = e.target.value;
-                      setClaimedScore((p) => ({
-                        ...p,
-                        [(isSnooker || isPooker) ? 'player2Frames' : 'player2RackWins']: val === '' ? '' : (parseInt(val, 10) || 0),
-                      }));
-                    }}
-                    className={`w-full border-none bg-[#FDF2D1]/50 rounded-xl py-3 font-black text-center text-xl text-[#BA995D] focus:ring-2 focus:ring-[#BA995D]/10 shadow-inner ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  />
-                  <div className="absolute top-1/2 right-3 -translate-y-1/2 text-[8px] font-black text-[#BA995D]/30 uppercase">PTS</div>
-                  {!isOverallPointsEnabled && <div className="text-[7px] text-center text-gray-400 mt-1 uppercase font-bold sticky">Auto-calculated</div>}
+
+                {/* Read-only live scoreboard */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1">{result.player1?.name}</label>
+                    <div className="relative">
+                      <div className="w-full bg-blue-50/70 rounded-xl py-3 font-black text-center text-2xl text-[#132F45] shadow-inner select-none">
+                        {computedP1Total}
+                      </div>
+                      <div className="absolute top-1/2 left-3 -translate-y-1/2 text-[7px] font-black text-blue-300 uppercase">FRM</div>
+                      <div className="text-[7px] text-center text-blue-400 mt-1 uppercase font-black">Auto-calculated</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1 text-right">{result.player2?.name}</label>
+                    <div className="relative">
+                      <div className="w-full bg-[#FDF2D1]/70 rounded-xl py-3 font-black text-center text-2xl text-[#BA995D] shadow-inner select-none">
+                        {computedP2Total}
+                      </div>
+                      <div className="absolute top-1/2 right-3 -translate-y-1/2 text-[7px] font-black text-[#BA995D]/30 uppercase">FRM</div>
+                      <div className="text-[7px] text-center text-[#BA995D]/60 mt-1 uppercase font-black">Auto-calculated</div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            {(isSnooker || isPooker) && (
-              <div className="space-y-1.5">
-                <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5 px-1">
-                  Highest Break <span className="w-1 h-2.5 bg-[#BA995D] rounded-full inline-block" />
-                </label>
-                <input
-                  type="number"
-                  value={claimedScore.highestBreak ?? ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setClaimedScore((p) => ({ ...p, highestBreak: val === '' ? '' : (parseInt(val, 10) || 0) }));
-                  }}
-                  className="w-full border border-gray-100 bg-[#FAFAFA] rounded-xl px-4 py-2.5 text-sm font-bold text-[#132F45] focus:ring-2 focus:ring-[#132F45]/5"
-                  placeholder="Enter break score..."
-                />
-              </div>
+
+                {(isSnooker || isPooker) && (
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5 px-1">
+                      Highest Break <span className="w-1 h-2.5 bg-[#BA995D] rounded-full inline-block" />
+                    </label>
+                    <input
+                      type="number"
+                      value={claimedScore.highestBreak ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setClaimedScore((p) => ({ ...p, highestBreak: val === '' ? '' : (parseInt(val, 10) || 0) }));
+                      }}
+                      className="w-full border border-gray-100 bg-[#FAFAFA] rounded-xl px-4 py-2.5 text-sm font-bold text-[#132F45] focus:ring-2 focus:ring-[#132F45]/5"
+                      placeholder="Enter break score..."
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              /* ── Overall Mode: editable score inputs ── */
+              <>
+                <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1 h-2.5 bg-[#BA995D] rounded-full" /> Corrected Totals
+                </h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1">{result.player1?.name}</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={((isSnooker || isPooker) ? claimedScore.player1Frames : claimedScore.player1RackWins) ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setClaimedScore((p) => ({
+                            ...p,
+                            [(isSnooker || isPooker) ? 'player1Frames' : 'player1RackWins']: val === '' ? '' : (parseInt(val, 10) || 0),
+                          }));
+                        }}
+                        className="w-full border-none bg-blue-50/50 rounded-xl py-3 font-black text-center text-xl text-[#132F45] focus:ring-2 focus:ring-[#132F45]/10 shadow-inner"
+                      />
+                      <div className="absolute top-1/2 left-3 -translate-y-1/2 text-[8px] font-black text-blue-300 uppercase">PTS</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-500 uppercase tracking-widest px-1 text-right">{result.player2?.name}</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={((isSnooker || isPooker) ? claimedScore.player2Frames : claimedScore.player2RackWins) ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setClaimedScore((p) => ({
+                            ...p,
+                            [(isSnooker || isPooker) ? 'player2Frames' : 'player2RackWins']: val === '' ? '' : (parseInt(val, 10) || 0),
+                          }));
+                        }}
+                        className="w-full border-none bg-[#FDF2D1]/50 rounded-xl py-3 font-black text-center text-xl text-[#BA995D] focus:ring-2 focus:ring-[#BA995D]/10 shadow-inner"
+                      />
+                      <div className="absolute top-1/2 right-3 -translate-y-1/2 text-[8px] font-black text-[#BA995D]/30 uppercase">PTS</div>
+                    </div>
+                  </div>
+                </div>
+                {(isSnooker || isPooker) && (
+                  <div className="space-y-1.5">
+                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5 px-1">
+                      Highest Break <span className="w-1 h-2.5 bg-[#BA995D] rounded-full inline-block" />
+                    </label>
+                    <input
+                      type="number"
+                      value={claimedScore.highestBreak ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setClaimedScore((p) => ({ ...p, highestBreak: val === '' ? '' : (parseInt(val, 10) || 0) }));
+                      }}
+                      className="w-full border border-gray-100 bg-[#FAFAFA] rounded-xl px-4 py-2.5 text-sm font-bold text-[#132F45] focus:ring-2 focus:ring-[#132F45]/5"
+                      placeholder="Enter break score..."
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
 

@@ -3688,14 +3688,30 @@ exports.overrideStandings = async (req, res) => {
 
     // Store original points for audit
     const originalPoints = leaguePlayer.points;
-    const newPoints = originalPoints + pointsAdjustment;
 
-    // Update LeaguePlayer with manual adjustment
-    const manualAdjustment = (leaguePlayer.manualPointsAdjustment || 0) + pointsAdjustment;
+    // FIX: Store manualPointsAdjustment as an ABSOLUTE override value (not cumulative).
+    // The standings recalculation computes match-based points from scratch and adds
+    // manualPointsAdjustment on top (see standingsService.js line 433).
+    // If we accumulated adjustments, each call to updateLeagueStandings would
+    // add the growing cumulative value on top of the fresh match-based total, causing
+    // incorrect results. Instead, we REPLACE manualPointsAdjustment with the new value.
+    const prevManualAdjustment = leaguePlayer.manualPointsAdjustment || 0;
+    const newManualAdjustment = prevManualAdjustment + pointsAdjustment;
+
+    // Persist the new override value
     await leaguePlayer.update({
-      points: newPoints,
-      manualPointsAdjustment: manualAdjustment
+      manualPointsAdjustment: newManualAdjustment
     });
+
+    // Trigger a full standings recalculation so that:
+    //   finalPoints = (match-based points) + newManualAdjustment
+    // This ensures correctness regardless of how many matches have been played.
+    const standingsService = require("../services/standingsService");
+    await standingsService.updateLeagueStandings(leagueId);
+
+    // Reload the player to get the freshly computed points from the recalculation
+    await leaguePlayer.reload();
+    const newPoints = leaguePlayer.points;
 
     // Create audit log
     const { AuditLog } = require("../models");
@@ -3713,13 +3729,15 @@ exports.overrideStandings = async (req, res) => {
         originalPoints: originalPoints,
         newPoints: newPoints,
         adjustment: pointsAdjustment,
+        previousManualAdjustment: prevManualAdjustment,
+        newManualAdjustment: newManualAdjustment,
         reason: reason,
         timestamp: new Date()
       },
       ipAddress: req.ip
     });
 
-    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: ${pointsAdjustment} points (${reason})`);
+    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: +${pointsAdjustment} adjustment (cumulative manual: ${newManualAdjustment}), final points: ${newPoints} (${reason})`);
 
     res.json({
       success: true,
@@ -3728,7 +3746,7 @@ exports.overrideStandings = async (req, res) => {
         originalPoints,
         newPoints,
         adjustment: pointsAdjustment,
-        cumulativeManualAdjustment: manualAdjustment
+        cumulativeManualAdjustment: newManualAdjustment
       },
       message: `Standings updated. Player ${leaguePlayer.player?.name || playerId} now has ${newPoints} points.`
     });
