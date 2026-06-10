@@ -2192,23 +2192,33 @@ exports.submitMatchResult = async (req, res) => {
       // NOTE: p1Score/p2Score may reflect penalty/handicap evaluation and must be consistent.
 
       if (p1Score === p2Score) {
-        await transaction.rollback();
-        let ruleLabel = "a tie-break winner";
-        if (noDrawRule === 'respottedBlack') ruleLabel = "a Re-spotted Black winner";
-        else if (noDrawRule === 'mostPoints') ruleLabel = "a Most Points winner";
-        else if (noDrawRule === 'blackFinish') ruleLabel = "a Black Ball Finish winner";
+        // For Pool/Pooker knockout matches, allow draw to be submitted - backend will auto-resolve via tie-breakers
+        // For Snooker knockout matches, require explicit tie-break winner
+        const sport = booking.sport ? String(booking.sport).toLowerCase() : 'snooker';
+        const isPoolOrPooker = sport === 'pool' || sport === 'pooker';
+        
+        if (!isPoolOrPooker || !isKnockoutFormat) {
+          // For non-knockout or snooker knockout, enforce tie-break requirement
+          await transaction.rollback();
+          let ruleLabel = "a tie-break winner";
+          if (noDrawRule === 'respottedBlack') ruleLabel = "a Re-spotted Black winner";
+          else if (noDrawRule === 'mostPoints') ruleLabel = "a Most Points winner";
+          else if (noDrawRule === 'blackFinish') ruleLabel = "a Black Ball Finish winner";
 
-        if (isKnockoutFormat) {
+          if (isKnockoutFormat && sport === 'snooker') {
+            return res.status(400).json({
+              success: false,
+              error: `Knockout matches cannot end in a draw. Please use a tie-break method to determine a clear winner.`
+            });
+          }
+
           return res.status(400).json({
             success: false,
-            error: `Knockout matches cannot end in a draw. Please use a tie-break method to determine a clear winner.`
+            error: `This league does not allow draws. Please specify ${ruleLabel}.`
           });
         }
-
-        return res.status(400).json({
-          success: false,
-          error: `This league does not allow draws. Please specify ${ruleLabel}.`
-        });
+        // For Pool/Pooker knockout: Allow draw to proceed - system will auto-resolve
+        console.log(`[submitMatchResult] ${sport.toUpperCase()} knockout match is a draw. System will auto-resolve winner via tie-breakers.`);
       }
     }
 

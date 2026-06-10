@@ -165,10 +165,9 @@ async function updateLeagueStandings(leagueId) {
             p2.points += pPoints;
         }
 
-        if (!isWalkoverMatch || ['whitewash', 'forfeit'].includes(withdrawalRule)) {
-            p1.matchesPlayed += 1;
-            p2.matchesPlayed += 1;
-        }
+        // For ALL matches (regular and walkovers), increment matches played
+        p1.matchesPlayed += 1;
+        p2.matchesPlayed += 1;
 
         // 4b. Aggregate Frames/Racks Won (Base Stats) - SKIP for walkovers
         const leagueSport = String(league.sport).toLowerCase();
@@ -320,12 +319,12 @@ async function updateLeagueStandings(leagueId) {
             const winnerIdStr = isP1Winner ? player1Id : player2Id;
             const loserIdStr = isP1Winner ? player2Id : player1Id;
 
-            if (!isWalkoverMatch || ['whitewash', 'forfeit'].includes(withdrawalRule)) {
-                winner.matchesWon += 1;
-                loser.matchesLost += 1;
-            }
+            // For ALL matches (regular and walkovers), increment match wins/losses
+            // This ensures walkovers count towards total match records
+            winner.matchesWon += 1;
+            loser.matchesLost += 1;
 
-            // Track walkover wins/losses separately
+            // Track walkover wins/losses separately for detailed reporting
             if (isWalkoverMatch) {
                 if (!['whitewash', 'forfeit'].includes(withdrawalRule)) {
                     winner.walkoverWins += 1;

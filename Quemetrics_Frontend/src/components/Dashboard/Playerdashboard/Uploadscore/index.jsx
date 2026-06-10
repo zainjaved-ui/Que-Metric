@@ -2835,13 +2835,34 @@ export default function UploadScore() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-400 text-[10px] font-black uppercase tracking-wider">Match Winner</span>
-                <span className={`font-black uppercase text-[10px] px-2 py-0.5 rounded ${parseInt(formData.player1Score) === parseInt(formData.player2Score) ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50'}`}>
-                  {parseInt(formData.player1Score) === parseInt(formData.player2Score)
-                    ? (formData.winnerId
-                      ? `🤝 DRAW (${formData.winnerId === matchDetails.player1.id ? matchDetails.player1?.name : matchDetails.player2?.name} won tie-break)`
-                      : '🤝 DRAW')
-                    : (parseInt(formData.player1Score) > parseInt(formData.player2Score) ? matchDetails.player1?.name : matchDetails.player2?.name)}
-                </span>
+                {(() => {
+                  const p1Score = parseInt(formData.player1Score);
+                  const p2Score = parseInt(formData.player2Score);
+                  const isScoresEqual = p1Score === p2Score;
+                  const isPoolOrPooker = matchDetails.sport === 'pool' || matchDetails.sport === 'pooker';
+                  const isKnockout = matchDetails.league?.format === 'knockout' || matchDetails.league?.format === 'groupsKnockout';
+                  
+                  // For Pool/Pooker knockout matches with auto-resolved winner, show winner name
+                  if (isScoresEqual && isPoolOrPooker && isKnockout && formData.winnerId) {
+                    const winnerName = formData.winnerId === matchDetails.player1.id ? matchDetails.player1?.name : matchDetails.player2?.name;
+                    return (
+                      <span className={`font-black uppercase text-[10px] px-2 py-0.5 rounded text-green-600 bg-green-50`}>
+                        {winnerName} WINS
+                      </span>
+                    );
+                  }
+                  
+                  // Otherwise use default logic
+                  return (
+                    <span className={`font-black uppercase text-[10px] px-2 py-0.5 rounded ${isScoresEqual ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50'}`}>
+                      {isScoresEqual
+                        ? (formData.winnerId
+                          ? `🤝 DRAW (${formData.winnerId === matchDetails.player1.id ? matchDetails.player1?.name : matchDetails.player2?.name} won tie-break)`
+                          : '🤝 DRAW')
+                        : (p1Score > p2Score ? matchDetails.player1?.name : matchDetails.player2?.name)}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 

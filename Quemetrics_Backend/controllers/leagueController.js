@@ -932,8 +932,15 @@ exports.joinLeague = async (req, res) => {
       // For rolling leagues that haven't started yet, generate initial fixtures
       const { generateFixturesForLeague } = require("../services/fixtureGenerator");
       generateFixturesForLeague(leagueId, null, { incremental: false })
-        .then(() => {
+        .then(async () => {
           console.log(`[joinLeague-async] Initial fixtures generated for rolling league ${leagueId}`);
+          // Persist the fixturesGenerated flag after successful generation
+          try {
+            await league.update({ fixturesGenerated: true });
+            console.log(`[joinLeague-async] fixturesGenerated flag updated for league ${leagueId}`);
+          } catch (flagErr) {
+            console.error(`[joinLeague-async] Failed to update fixturesGenerated flag: ${flagErr.message}`);
+          }
         })
         .catch(fixtureErr => {
           console.error('[joinLeague-async] Failed to generate initial fixtures:', fixtureErr.message || fixtureErr);
@@ -2186,6 +2193,8 @@ exports.startLeague = async (req, res) => {
     const { generateFixturesForLeague } = require("../services/fixtureGenerator");
     try {
       await generateFixturesForLeague(leagueId);
+      // Update the fixturesGenerated flag after successful generation
+      await league.update({ fixturesGenerated: true });
     } catch (genErr) {
       console.error("[startLeague] Fixture generation failed:", genErr);
       // We still keep it active, but warn the user
@@ -3106,6 +3115,9 @@ exports.activateWizardLeague = async (req, res) => {
       let fixturesFailed = false;
       try {
         await generateFixturesForLeague(league.id);
+        // Persist the fixturesGenerated flag after successful generation
+        await league.update({ fixturesGenerated: true });
+        console.log(`[activateWizardLeague] Fixtures generated and fixturesGenerated flag updated for league ${league.id}`);
       } catch (genError) {
         fixturesFailed = true;
         console.error("Auto‑generation of fixtures failed:", genError);
