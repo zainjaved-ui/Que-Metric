@@ -1106,7 +1106,12 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
   if (!effectiveWinnerId && currentFixture.player1Id && currentFixture.player2Id) {
     console.log(`[advanceKnockoutWinner] Match ${fixtureId} is a draw. Applying tie-breakers for progression.`);
     
-    const { MatchResult } = require('../models');
+    const { MatchResult, League } = require('../models');
+    
+    // Get league to determine sport
+    const league = await League.findByPk(currentFixture.leagueId);
+    const sport = league?.sport ? String(league.sport).toLowerCase() : 'snooker';
+    
     const allResults = await MatchResult.findAll({
       where: {
         leagueId: currentFixture.leagueId,
@@ -1114,23 +1119,53 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
       }
     });
 
-    const getStats = (pId) => {
-      const pResults = allResults.filter(r => r.player1Id === pId || r.player2Id === pId);
-      const fw = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1Frames || r.player1RackWins || 0) : (r.player2Frames || r.player2RackWins || 0)), 0);
-      const fl = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player2Frames || r.player2RackWins || 0) : (r.player1Frames || r.player1RackWins || 0)), 0);
-      const hb = pResults.reduce((max, r) => Math.max(max, (r.player1Id === pId ? (r.player1HighestBreak || 0) : (r.player2HighestBreak || 0))), 0);
-      return { fw, fd: fw - fl, hb };
-    };
+    // Sport-specific tie-breaker logic
+    if (sport === 'pool' || sport === 'pooker') {
+      // Pool/Pooker: Racks → Balls Potted → 7-Ball Wins → Black Finishes (Pooker only) → Whitewash Wins → Player 1
+      const getPoolStats = (pId) => {
+        const pResults = allResults.filter(r => r.player1Id === pId || r.player2Id === pId);
+        const rw = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1RackWins || 0) : (r.player2RackWins || 0)), 0);
+        const rl = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player2RackWins || 0) : (r.player1RackWins || 0)), 0);
+        const bp = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1BallsPotted || 0) : (r.player2BallsPotted || 0)), 0);
+        const sbw = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1SevenBallWins || 0) : (r.player2SevenBallWins || 0)), 0);
+        const bf = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1BlackFinishes || 0) : (r.player2BlackFinishes || 0)), 0);
+        const ww = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1WhitewashWins || 0) : (r.player2WhitewashWins || 0)), 0);
+        return { rw, rd: rw - rl, bp, sbw, bf, ww };
+      };
 
-    const s1 = getStats(currentFixture.player1Id);
-    const s2 = getStats(currentFixture.player2Id);
+      const s1 = getPoolStats(currentFixture.player1Id);
+      const s2 = getPoolStats(currentFixture.player2Id);
 
-    if (s1.fd !== s2.fd) effectiveWinnerId = s1.fd > s2.fd ? currentFixture.player1Id : currentFixture.player2Id;
-    else if (s1.fw !== s2.fw) effectiveWinnerId = s1.fw > s2.fw ? currentFixture.player1Id : currentFixture.player2Id;
-    else if (s1.hb !== s2.hb) effectiveWinnerId = s1.hb > s2.hb ? currentFixture.player1Id : currentFixture.player2Id;
-    else effectiveWinnerId = currentFixture.player1Id; // Fallback
+      // Tie-break hierarchy for Pool/Pooker: Rack Difference → Total Racks → Balls Potted → 7-Ball Wins → Black Finishes → Whitewash Wins → Player 1
+      if (s1.rd !== s2.rd) effectiveWinnerId = s1.rd > s2.rd ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.rw !== s2.rw) effectiveWinnerId = s1.rw > s2.rw ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.bp !== s2.bp) effectiveWinnerId = s1.bp > s2.bp ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.sbw !== s2.sbw) effectiveWinnerId = s1.sbw > s2.sbw ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (sport === 'pooker' && s1.bf !== s2.bf) effectiveWinnerId = s1.bf > s2.bf ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.ww !== s2.ww) effectiveWinnerId = s1.ww > s2.ww ? currentFixture.player1Id : currentFixture.player2Id;
+      else effectiveWinnerId = currentFixture.player1Id; // Fallback
 
-    console.log(`[advanceKnockoutWinner] Tie-breaker result for Match ${fixtureId}: Advancing ${effectiveWinnerId}`);
+      console.log(`[advanceKnockoutWinner] ${sport.toUpperCase()} tie-breaker: P1(rd:${s1.rd} rw:${s1.rw} bp:${s1.bp} sbw:${s1.sbw}${sport === 'pooker' ? ` bf:${s1.bf}` : ''} ww:${s1.ww}) vs P2(rd:${s2.rd} rw:${s2.rw} bp:${s2.bp} sbw:${s2.sbw}${sport === 'pooker' ? ` bf:${s2.bf}` : ''} ww:${s2.ww}) → Winner: ${effectiveWinnerId}`);
+    } else {
+      // Snooker: Frame Difference → Total Frames → Highest Break → Player 1
+      const getStats = (pId) => {
+        const pResults = allResults.filter(r => r.player1Id === pId || r.player2Id === pId);
+        const fw = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player1Frames || 0) : (r.player2Frames || 0)), 0);
+        const fl = pResults.reduce((sum, r) => sum + (r.player1Id === pId ? (r.player2Frames || 0) : (r.player1Frames || 0)), 0);
+        const hb = pResults.reduce((max, r) => Math.max(max, (r.player1Id === pId ? (r.player1HighestBreak || 0) : (r.player2HighestBreak || 0))), 0);
+        return { fw, fd: fw - fl, hb };
+      };
+
+      const s1 = getStats(currentFixture.player1Id);
+      const s2 = getStats(currentFixture.player2Id);
+
+      if (s1.fd !== s2.fd) effectiveWinnerId = s1.fd > s2.fd ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.fw !== s2.fw) effectiveWinnerId = s1.fw > s2.fw ? currentFixture.player1Id : currentFixture.player2Id;
+      else if (s1.hb !== s2.hb) effectiveWinnerId = s1.hb > s2.hb ? currentFixture.player1Id : currentFixture.player2Id;
+      else effectiveWinnerId = currentFixture.player1Id; // Fallback
+
+      console.log(`[advanceKnockoutWinner] SNOOKER tie-breaker: P1(fd:${s1.fd} fw:${s1.fw} hb:${s1.hb}) vs P2(fd:${s2.fd} fw:${s2.fw} hb:${s2.hb}) → Winner: ${effectiveWinnerId}`);
+    }
   }
 
   if (!effectiveWinnerId) return;

@@ -130,6 +130,10 @@ exports.generateFixtures = async (req, res) => {
     const options = { incremental: mode === 'incremental' };
     const fixtures = await generateFixturesForLeague(leagueId, divisionId, options);
 
+    // Update the fixturesGenerated flag on the league
+    league.fixturesGenerated = true;
+    await league.save();
+
     res.json({
       success: true,
       message: `${fixtures.length} fixtures generated successfully`,

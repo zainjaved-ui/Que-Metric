@@ -209,13 +209,18 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       fixture.status === 'walkover' ||
       fixture.detailedStatus === 'WALKOVER';
 
-    // Identify whitewash
-    const isDraw = !isWalkover && fixture.status === 'completed' && (() => {
-      const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
-      const s1 = Number(sportName === 'pool' ? (fixture.player1RackWins ?? fixture.player1Frames) : fixture.player1Frames) || 0;
-      const s2 = Number(sportName === 'pool' ? (fixture.player2RackWins ?? fixture.player2Frames) : fixture.player2Frames) || 0;
-      return s1 === s2 && s1 > 0 && !fixture.winnerId;
-    })();
+    // Identify draw (but NOT if it's knockout pool/pooker with auto-decided winner)
+    const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
+    const isKnockoutPoolPooker = (String(fixture.stage || '').toLowerCase() === 'knockout' || String(fixture.additionalData?.stage || '').toLowerCase() === 'knockout') && (sportName === 'pool' || sportName === 'pooker');
+    const s1 = Number(sportName === 'pool' || sportName === 'pooker' ? (fixture.player1RackWins ?? fixture.player1Frames) : fixture.player1Frames) || 0;
+    const s2 = Number(sportName === 'pool' || sportName === 'pooker' ? (fixture.player2RackWins ?? fixture.player2Frames) : fixture.player2Frames) || 0;
+    const scoresEqual = s1 === s2 && s1 > 0;
+    
+    // It's only a DRAW if scores are equal, NO winner ID, and it's not a KO pool/pooker with auto-decided winner
+    const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !fixture.winnerId;
+    
+    // Check if this is an auto-resolved knockout draw (has winnerId but scores are equal)
+    const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && fixture.winnerId;
 
     const isWhitewash = !isDraw && (fixture.detailedStatus === 'WHITEWASH' || (!isWalkover && (fixture.status === 'completed' || fixture.status === 'walkover') && (() => {
       const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
@@ -242,7 +247,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       divisionName: division.name || 'Main Division',
       additionalData: fixture.additionalData || fixture.resultData || {},
       status: finalStatus,
-      detailedStatus: isWalkover ? 'WALKOVER' : (isAwaitingAdmin ? 'PENDING APPROVAL' : (isDraw ? 'DRAW' : (isWhitewash ? 'WHITEWASH' : (fixture.detailedStatus || (finalStatus === 'scheduled' ? 'SCHEDULED' : finalStatus?.toUpperCase()))))),
+      detailedStatus: isWalkover ? 'WALKOVER' : (isAwaitingAdmin ? 'PENDING APPROVAL' : (isDraw ? 'DRAW' : (isAutoResolvedKODraw ? 'AUTO-RESOLVED DRAW' : (isWhitewash ? 'WHITEWASH' : (fixture.detailedStatus || (finalStatus === 'scheduled' ? 'SCHEDULED' : finalStatus?.toUpperCase())))))),
       tableName: tableName,
       frameDetails: Array.isArray(frameDetails) ? frameDetails : [],
       isDisputed: isDisputed,
@@ -336,11 +341,30 @@ const getLeagueGameName = (league) => {
 };
 
 // --- Fixture Card Component (for List View) ---
-const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, onEditFixture, onEditResult, canWalkover, onWalkover, promoRegInfo, effectiveFormat, champion, leagueStatus }) => {
+const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, onEditFixture, onEditResult, canWalkover, onWalkover, promoRegInfo, effectiveFormat, champion, leagueStatus, sport }) => {
   const isTBD = match.homeTeam === 'TBD' && match.awayTeam === 'TBD';
   const isCompleted = match.status === 'completed' || match.status === 'walkover';
   const isBye = match.status === 'bye' || match.detailedStatus === 'BYE';
   const isPendingConfirmation = match.matchResult?.resultStatus === 'Pending';
+
+  // Determine if this is a knockout draw with auto-decided winner (Pool/Pooker)
+  const isAutoResolvedDraw = match.detailedStatus === 'AUTO-RESOLVED DRAW' && match.winnerId;
+
+  // Get winner name if auto-resolved
+  const getWinnerStatus = () => {
+    if (!isAutoResolvedDraw) return null;
+    
+    const winnerId = match.winnerId;
+    const player1Id = match.player1?.id || match.additionalData?.player1Id;
+    const player2Id = match.player2?.id || match.additionalData?.player2Id;
+    
+    if (String(winnerId) === String(player1Id)) {
+      return `${match.homeTeam} WINS`;
+    } else if (String(winnerId) === String(player2Id)) {
+      return `${match.awayTeam} WINS`;
+    }
+    return null;
+  };
 
   return (
     <motion.div
@@ -386,7 +410,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
             return false;
           })()) || (isBye && match.homeTeam && match.homeTeam !== 'TBD' && match.homeTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
             }`}>
-            {match.homeTeam}
+            {match.homeTeam === 'BYE' ? (match.player1?.name || 'TBD') : match.homeTeam}
           </span>
           {/* Promotion/Relegation/Champion Tags for Player 1 */}
           <div className="flex items-center gap-1 mt-0.5">
@@ -417,6 +441,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
                 {match.score}
               </div>
               <div className={`mt-2 text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border ${match.detailedStatus === 'WALKOVER' ? 'bg-orange-50 text-orange-600 border-orange-100 shadow-sm shadow-orange-100' :
+                match.detailedStatus === 'AUTO-RESOLVED DRAW' ? 'bg-green-50 text-green-600 border-green-100 shadow-sm shadow-green-100' :
                 match.detailedStatus === 'PENDING APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
                   match.detailedStatus === 'FORFEIT' ? 'bg-red-50 text-red-600 border-red-100 shadow-sm shadow-red-100' :
                     match.detailedStatus === 'DRAW' ? 'bg-teal-50 text-teal-600 border-teal-100 shadow-sm shadow-teal-100' :
@@ -424,7 +449,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
                         match.detailedStatus === 'TIE-BREAK' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
                           'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'
                 }`}>
-                {match.detailedStatus || 'COMPLETE'}
+                {isAutoResolvedDraw ? getWinnerStatus() : (match.detailedStatus || 'COMPLETE')}
               </div>
             </div>
           ) : (
@@ -470,7 +495,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
             return false;
           })()) || (isBye && match.awayTeam && match.awayTeam !== 'TBD' && match.awayTeam !== 'BYE') ? 'text-[#132F45]' : 'text-gray-400'
             }`}>
-            {match.awayTeam}
+            {match.awayTeam === 'BYE' ? (match.player2?.name || 'TBD') : match.awayTeam}
           </span>
           {/* Promotion/Relegation/Champion Tags for Player 2 */}
           <div className="flex items-center gap-1 mt-0.5">
@@ -517,7 +542,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
             </button>
           )}
 
-          {!isTBD && canEditFixtures && match.status !== 'completed' && (
+          {!isTBD && !isBye && canEditFixtures && match.status !== 'completed' && (
             <button
               onClick={() => onEditFixture(match)}
               className="p-2.5 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-600 hover:text-white transition-all shadow-sm"
@@ -557,7 +582,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
 };
 
 // --- Standings Table Component ---
-const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettings, leagueStatus, sport, effectiveFormat, structure }) => {
+const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettings, leagueStatus, sport, effectiveFormat, structure, refreshCounter = 0 }) => {
   const [standings, setStandings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -604,7 +629,7 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
     if (leagueId) {
       fetchStandings();
     }
-  }, [leagueId, divisionId, fetchStandings]);
+  }, [leagueId, divisionId, fetchStandings, refreshCounter]);
 
   const handleOverride = async (leaguePlayerId, data) => {
     setActionLoading(true);
@@ -1035,6 +1060,7 @@ export default function LeagueMatches() {
   const [loadingDivisions, setLoadingDivisions] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [loadingMatches, setLoadingMatches] = useState(false);
+  const [standingsRefreshCounter, setStandingsRefreshCounter] = useState(0);
   const [champion, setChampion] = useState(null);
   const [promoRegInfo, setPromoRegInfo] = useState(null);
   const [leagueStandings, setLeagueStandings] = useState([]);
@@ -1193,6 +1219,9 @@ export default function LeagueMatches() {
         }
 
         setSelectedDivision(null);
+        
+        // Trigger standings refresh after updating fixtures
+        setStandingsRefreshCounter(prev => prev + 1);
 
       } catch (err) {
         console.error("Error loading league data:", err);
@@ -1784,7 +1813,7 @@ export default function LeagueMatches() {
       return matchesToFilter;
     }
     if (statusFilter === 'draw') {
-      return matchesToFilter.filter(m => m.detailedStatus === 'DRAW');
+      return matchesToFilter.filter(m => m.detailedStatus === 'DRAW' || m.detailedStatus === 'AUTO-RESOLVED DRAW');
     }
     if (statusFilter === 'whitewash') {
       return matchesToFilter.filter(m => m.detailedStatus === 'WHITEWASH');
@@ -2338,6 +2367,7 @@ export default function LeagueMatches() {
                     sport={selectedLeague.sport}
                     effectiveFormat={effectiveFormat}
                     structure={selectedLeague.structure}
+                    refreshCounter={standingsRefreshCounter}
                   />
                 ) : (
                   <div className="text-center py-12 opacity-70">
@@ -2389,7 +2419,7 @@ export default function LeagueMatches() {
                       const isActive = statusFilter === tab.id;
                       const count = filteredMatches.filter(m => {
                         if (tab.id === 'all') return true;
-                        if (tab.id === 'draw') return m.detailedStatus === 'DRAW';
+                        if (tab.id === 'draw') return m.detailedStatus === 'DRAW' || m.detailedStatus === 'AUTO-RESOLVED DRAW';
                         if (tab.id === 'whitewash') return m.detailedStatus === 'WHITEWASH';
                         if (tab.id === 'walkover') return m.detailedStatus === 'WALKOVER';
                         return m.status === tab.id;
@@ -2761,6 +2791,7 @@ export default function LeagueMatches() {
                                             effectiveFormat={format}
                                             champion={champion}
                                             leagueStatus={selectedLeague?.status}
+                                            sport={selectedLeague?.sport}
                                           />
                                         ))}
                                       </div>
@@ -3128,17 +3159,51 @@ export default function LeagueMatches() {
                       {[
                         { label: 'Win', value: `${selectedLeague.pointsSystem?.win || 3} pts` },
                         { label: 'Draw', value: `${selectedLeague.pointsSystem?.draw || 1} pts` },
-                        { label: 'Loss', value: `${selectedLeague.pointsSystem?.loss || 0} pts` },
-                        { label: 'Bonus', value: selectedLeague.pointsSystem?.bonus ? 'Enabled' : 'Disabled', color: selectedLeague.pointsSystem?.bonus ? 'text-emerald-600' : 'text-slate-400' }
+                        { label: 'Loss', value: `${selectedLeague.pointsSystem?.loss || 0} pts` }
                       ].map((item, i) => (
                         <div key={i} className="flex justify-between items-center text-sm">
                           <span className="text-slate-400 font-medium">{item.label}:</span>
-                          <span className={`font-black tracking-tight ${item.color || 'text-[#132F45]'}`}>
+                          <span className={`font-black tracking-tight text-[#132F45]`}>
                             {item.value}
                           </span>
                         </div>
                       ))}
                     </div>
+
+                    {/* Bonuses Section */}
+                    {selectedLeague.pointsSystem?.bonuses && (
+                      <div className="mt-6 pt-6 border-t border-slate-100">
+                        <h4 className="text-[10px] font-black text-[#132F45] uppercase tracking-[0.2em] mb-4">Bonuses</h4>
+                        <div className="space-y-3">
+                          {selectedLeague.pointsSystem.bonuses.participation && (
+                            <div className="flex justify-between items-center text-sm bg-emerald-50 rounded-lg p-3">
+                              <span className="text-slate-600 font-medium">Participation</span>
+                              <span className="font-black tracking-tight text-emerald-600">{selectedLeague.pointsSystem.bonuses.participationValue || 1} pts</span>
+                            </div>
+                          )}
+                          
+                          {selectedLeague.pointsSystem.bonuses.whitewash && (
+                            <div className="flex justify-between items-center text-sm bg-amber-50 rounded-lg p-3">
+                              <span className="text-slate-600 font-medium">Whitewash Win</span>
+                              <span className="font-black tracking-tight text-amber-600">{selectedLeague.pointsSystem.bonuses.whitewashPoints || 1} pts</span>
+                            </div>
+                          )}
+                          
+                          {selectedLeague.pointsSystem.bonuses.breakOverX && (
+                            <div className="flex justify-between items-center text-sm bg-indigo-50 rounded-lg p-3">
+                              <span className="text-slate-600 font-medium">Break over {selectedLeague.pointsSystem.bonuses.breakValue || 50}</span>
+                              <span className="font-black tracking-tight text-indigo-600">{selectedLeague.pointsSystem.bonuses.breakPoints || 1} pts</span>
+                            </div>
+                          )}
+
+                          {!selectedLeague.pointsSystem.bonuses.participation && 
+                           !selectedLeague.pointsSystem.bonuses.whitewash && 
+                           !selectedLeague.pointsSystem.bonuses.breakOverX && (
+                            <div className="text-sm text-slate-400 italic">No bonuses enabled</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* 4. Advancement & Results */}
@@ -3449,6 +3514,8 @@ export default function LeagueMatches() {
             onUpdate={() => {
               closePendingWalkoverModal();
               loadPendingWalkovers();
+              // Trigger standings refresh after pending walkover is processed
+              setStandingsRefreshCounter(prev => prev + 1);
             }}
           />
         )}
@@ -3511,22 +3578,32 @@ function MatchDetailsModal({ match, onClose, statusStyles, formatDate, formatTim
             </div>
             <span className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${match.isWalkover || match.detailedStatus === 'WALKOVER'
               ? 'bg-orange-50 text-orange-600 border border-orange-100'
-              : match.detailedStatus === 'DRAW'
-                ? 'bg-teal-50 text-teal-600 border border-teal-100'
-                : match.detailedStatus === 'WHITEWASH'
-                  ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
-                  : match.detailedStatus === 'TIE-BREAK'
-                    ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                    : match.detailedStatus === 'FORFEIT'
-                      ? 'bg-red-50 text-red-600 border border-red-100'
-                      : match.detailedStatus === 'PENDING APPROVAL'
-                        ? 'bg-yellow-50 text-yellow-600 border border-yellow-100'
-                        : match.status === 'completed'
-                          ? 'bg-green-50 text-green-600 border border-green-100'
-                          : (statusStyles[match.status] || statusStyles.pending)
+              : match.detailedStatus === 'AUTO-RESOLVED DRAW'
+                ? 'bg-green-50 text-green-600 border border-green-100'
+                : match.detailedStatus === 'DRAW'
+                  ? 'bg-teal-50 text-teal-600 border border-teal-100'
+                  : match.detailedStatus === 'WHITEWASH'
+                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                    : match.detailedStatus === 'TIE-BREAK'
+                      ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                      : match.detailedStatus === 'FORFEIT'
+                        ? 'bg-red-50 text-red-600 border border-red-100'
+                        : match.detailedStatus === 'PENDING APPROVAL'
+                          ? 'bg-yellow-50 text-yellow-600 border border-yellow-100'
+                          : match.status === 'completed'
+                            ? 'bg-green-50 text-green-600 border border-green-100'
+                            : (statusStyles[match.status] || statusStyles.pending)
               }`}>
               {match.isWalkover || match.detailedStatus === 'WALKOVER' ? (
                 <><FaTrophy size={14} /> WALKOVER</>
+              ) : match.detailedStatus === 'AUTO-RESOLVED DRAW' ? (
+                (() => {
+                  const winnerId = match.winnerId;
+                  const player1Id = match.player1?.id || match.additionalData?.player1Id;
+                  const player2Id = match.player2?.id || match.additionalData?.player2Id;
+                  const winnerName = String(winnerId) === String(player1Id) ? match.homeTeam : String(winnerId) === String(player2Id) ? match.awayTeam : 'UNKNOWN';
+                  return `${winnerName} WINS`;
+                })()
               ) : match.detailedStatus === 'DRAW' ? (
                 '🤝 DRAW'
               ) : match.detailedStatus === 'WHITEWASH' ? (
@@ -3542,6 +3619,81 @@ function MatchDetailsModal({ match, onClose, statusStyles, formatDate, formatTim
               )}
             </span>
           </div>
+
+          {/* Match Statistics Summary - for Pool/Pooker */}
+          {(match.gameType === "pool" || match.gameType === "pooker") && (match.player1BallsPotted !== undefined || match.player2BallsPotted !== undefined || match.player1SevenBallWins !== undefined || match.player1BlackFinishes !== undefined) && (
+            <div className="bg-gradient-to-r from-blue-50 to-emerald-50 rounded-xl p-5 border border-blue-100">
+              <h3 className="text-sm font-bold text-[#132F45] mb-4 flex items-center gap-2">
+                <FaBarChart className="text-blue-600" /> Match Statistics
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Balls Potted */}
+                {(match.player1BallsPotted !== undefined || match.player2BallsPotted !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-blue-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Balls Potted</p>
+                      <p className="text-2xl font-black text-blue-600">{match.player1BallsPotted ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.homeTeam}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-emerald-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Balls Potted</p>
+                      <p className="text-2xl font-black text-emerald-600">{match.player2BallsPotted ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.awayTeam}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* 7-Ball Wins */}
+                {(match.player1SevenBallWins !== undefined || match.player2SevenBallWins !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-yellow-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">7-Ball Wins</p>
+                      <p className="text-2xl font-black text-yellow-600">{match.player1SevenBallWins ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.homeTeam}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-yellow-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">7-Ball Wins</p>
+                      <p className="text-2xl font-black text-yellow-600">{match.player2SevenBallWins ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.awayTeam}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Black Finishes (Pooker only) */}
+                {match.gameType === "pooker" && (match.player1BlackFinishes !== undefined || match.player2BlackFinishes !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-gray-900 border-opacity-20">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Black Finish</p>
+                      <p className="text-2xl font-black text-gray-800">{match.player1BlackFinishes ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.homeTeam}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-gray-900 border-opacity-20">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Black Finish</p>
+                      <p className="text-2xl font-black text-gray-800">{match.player2BlackFinishes ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.awayTeam}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Balls Conceded */}
+                {(match.player1BallsConceded !== undefined || match.player2BallsConceded !== undefined) && (
+                  <>
+                    <div className="bg-white rounded-lg p-3 border border-red-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Balls Conceded</p>
+                      <p className="text-2xl font-black text-red-600">{match.player1BallsConceded ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.homeTeam}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 border border-red-100">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Balls Conceded</p>
+                      <p className="text-2xl font-black text-red-600">{match.player2BallsConceded ?? 0}</p>
+                      <p className="text-[9px] text-gray-400 mt-1">{match.awayTeam}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Frame-by-frame details for all game types (snooker, poker, pool) */}
           {match.frameDetails && (match.gameType === "snooker" || match.gameType === "pooker" || match.gameType === "pool") && (() => {
             let frameData = match.frameDetails;
