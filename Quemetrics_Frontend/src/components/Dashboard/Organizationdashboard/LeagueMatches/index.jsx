@@ -209,6 +209,15 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       fixture.status === 'walkover' ||
       fixture.detailedStatus === 'WALKOVER';
 
+    // Preserve a persisted winner even when the top-level fixture winnerId is missing.
+    const resolvedWinnerId = fixture.winnerId ||
+      mr.winnerId ||
+      mr.tieBreakWinnerId ||
+      resDataObj?.tieBreakWinnerId ||
+      fixture.additionalData?.tieBreakWinnerId ||
+      fixture.additionalData?.resultData?.tieBreakWinnerId ||
+      null;
+
     // Identify draw (but NOT if it's knockout pool/pooker with auto-decided winner)
     const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
     const isKnockoutPoolPooker = (String(fixture.stage || '').toLowerCase() === 'knockout' || String(fixture.additionalData?.stage || '').toLowerCase() === 'knockout') && (sportName === 'pool' || sportName === 'pooker');
@@ -217,10 +226,10 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
     const scoresEqual = s1 === s2 && s1 > 0;
     
     // It's only a DRAW if scores are equal, NO winner ID, and it's not a KO pool/pooker with auto-decided winner
-    const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !fixture.winnerId;
+    const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !resolvedWinnerId;
     
     // Check if this is an auto-resolved knockout draw (has winnerId but scores are equal)
-    const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && fixture.winnerId;
+    const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && resolvedWinnerId;
 
     const isWhitewash = !isDraw && (fixture.detailedStatus === 'WHITEWASH' || (!isWalkover && (fixture.status === 'completed' || fixture.status === 'walkover') && (() => {
       const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
@@ -243,6 +252,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       homeTeam: homeName,
       awayTeam: awayName,
       score: score,
+      winnerId: resolvedWinnerId,
       divisionId: fixture.divisionId,
       divisionName: division.name || 'Main Division',
       additionalData: fixture.additionalData || fixture.resultData || {},
@@ -4678,7 +4688,7 @@ function EditResultModal({ fixture, advancedSettings = {}, onClose, onUpdate }) 
               const isTie = s1 === s2 && (isPool ? formData.player1RackWins !== "" : formData.player1Frames !== "");
               const allowDraw = fixture.additionalData?.league?.matchRules?.allowDraw !== false;
 
-              if (!isTie || allowDraw) return null;
+              if (!isTie) return null;
 
               return (
                 <div className="bg-amber-50 p-5 rounded-2xl border-2 border-amber-100 space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -4687,7 +4697,9 @@ function EditResultModal({ fixture, advancedSettings = {}, onClose, onUpdate }) 
                     <h4 className="text-xs font-black uppercase tracking-widest">Tie-breaker Resolution Required</h4>
                   </div>
                   <p className="text-[11px] text-amber-600 font-bold leading-relaxed">
-                    This league does not allow draws. Please select the tie-break winner and the resolution method used.
+                    {allowDraw
+                      ? 'This league allows draws, but you can still record a tie-break winner if one was used.'
+                      : 'This league does not allow draws. Please select the tie-break winner and the resolution method used.'}
                   </p>
 
                   <div className="grid grid-cols-2 gap-4">

@@ -3267,29 +3267,46 @@ exports.getGameSeasons = async (req, res) => {
     // Find game by ID or name (Case-Insensitive)
     const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-    const game = isUUID(gameName)
-      ? await Game.findByPk(gameName)
-      : await Game.findOne({
-        where: sequelize.where(
-          sequelize.fn('LOWER', sequelize.col('name')),
-          String(gameName).toLowerCase().trim()
-        ),
-      });
+    const normalizedGameName = String(gameName || "").trim().toLowerCase();
 
-    if (!game) {
-      return res.status(404).json({ success: false, error: "Game not found" });
+    const seasonWhere = {
+      organizationId: organization.id,
+      status: "active",
+    };
+
+    const seasonQuery = {
+      where: seasonWhere,
+      include: [
+        {
+          model: Game,
+          as: "game",
+          attributes: ["id", "name"],
+        },
+      ],
+      attributes: ["id", "name", "startDate", "endDate", "status", "gameId"],
+      order: [["startDate", "DESC"]],
+    };
+
+    if (isUUID(gameName)) {
+      const game = await Game.findByPk(gameName);
+      if (!game) {
+        return res.status(404).json({ success: false, error: "Game not found" });
+      }
+      seasonWhere.gameId = game.id;
+    } else {
+      seasonQuery.include[0] = {
+        model: Game,
+        as: "game",
+        attributes: ["id", "name"],
+        where: sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('game.name')),
+          normalizedGameName
+        ),
+        required: true,
+      };
     }
 
-    // Get active seasons for this game and organization (filtered for wizard creation)
-    const seasons = await Season.findAll({
-      where: {
-        gameId: game.id,
-        organizationId: organization.id,
-        status: "active",
-      },
-      attributes: ["id", "name", "startDate", "endDate", "status"],
-      order: [["startDate", "DESC"]],
-    });
+    const seasons = await Season.findAll(seasonQuery);
 
     res.json({
       success: true,

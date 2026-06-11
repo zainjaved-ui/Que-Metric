@@ -1653,7 +1653,8 @@ exports.submitMatchResult = async (req, res) => {
     try {
       if (booking.league?.structure) {
         const structure = typeof booking.league.structure === 'string' ? JSON.parse(booking.league.structure) : booking.league.structure;
-        if (structure.format === 'knockout' || structure.format === 'groupKnockout') {
+        const structureFormat = String(structure?.format || '').toLowerCase();
+        if (structureFormat === 'knockout' || structureFormat === 'groupsknockout' || structureFormat === 'groupknockout') {
           isKnockoutFormat = true;
         }
       }
