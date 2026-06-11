@@ -433,7 +433,7 @@ const LeagueManagement = () => {
       <LoadingOverlay isOpen={loading || creatingLeague} message={loading ? "Loading Leagues..." : "Creating League..."} />
 
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">My LEagues</h1>
+        <h1 className="text-3xl font-bold">My Leagues</h1>
         {/* Original header button preserved for revert:
         <button
           onClick={() => setShowCreateModal(true)}
@@ -752,7 +752,13 @@ const LeagueManagement = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/organization/leaguematchmanagement?leagueId=${league.id}`);
+                              const clubId = league.basicInfo?.clubId || league.clubId || '';
+                              const gameId = league.basicInfo?.gameId || league.gameId || '';
+                              const params = new URLSearchParams();
+                              params.set('leagueId', league.id);
+                              if (clubId) params.set('clubId', clubId);
+                              if (gameId) params.set('gameId', gameId);
+                              navigate(`/organization/leaguematchmanagement?${params.toString()}`);
                             }}
                             className={`px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition flex items-center justify-center gap-2 ${league.status === 'active' ? 'flex-1' : 'w-full'}`}
                           >
