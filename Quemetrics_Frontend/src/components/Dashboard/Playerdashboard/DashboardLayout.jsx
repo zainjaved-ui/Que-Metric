@@ -23,8 +23,9 @@ import { hasAnyRole } from '../../../utils/roles';
 
 const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, switchRole } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -51,6 +52,7 @@ const DashboardLayout = () => {
     // { label: 'Profile', icon: <FaUser className="h-5 w-5" />, path: '/player/profile' },
     // { label: 'Results', icon: <FaChartLine className="h-5 w-5" />, path: '/player/results' },
     { label: 'Rankings', icon: <FaChartLine className="h-5 w-5" />, path: '/player/rankings' },
+    { label: 'Honors', icon: <FaMedal className="h-5 w-5" />, path: '/player/honors' },
     // { label: 'Leagues', icon: <FaUsers className="h-5 w-5" />, path: '/player/leagues' },
     { label: 'All Tournaments', icon: <FaTrophy className="h-5 w-5" />, path: '/player/tournaments' },
     { label: 'My Tournaments', icon: <FaCalendarAlt className="h-5 w-5" />, path: '/player/my-tournaments' },
@@ -58,6 +60,24 @@ const DashboardLayout = () => {
     //   ? [{ label: 'Venue Dashboard', icon: <FaMedal className="h-5 w-5" />, path: '/venue-owner/dashboard' }]
     //   : []),
   ];
+
+  const roleConfig = {
+    player: { label: 'Player', path: '/player/dashboard' },
+    organization: { label: 'Organizer', path: '/organization/dashboard' },
+    venue_owner: { label: 'Venue Owner', path: '/venue-owner/dashboard' },
+    super_admin: { label: 'Admin', path: '/admin/dashboard' },
+  };
+
+  const roleSwitchItems = Array.isArray(user?.availableRoles)
+    ? user.availableRoles
+        .map((roleItem) => (typeof roleItem === 'string' ? { role: roleItem } : roleItem))
+        .filter((roleItem) => roleItem?.role && roleItem.role !== user?.role)
+        .map((roleItem) => ({
+          role: roleItem.role,
+          label: roleConfig[roleItem.role]?.label || roleItem.role,
+          path: roleConfig[roleItem.role]?.path || '/',
+        }))
+    : [];
 
   const getNavLinkClasses = ({ isActive }) =>
     `group flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative overflow-hidden ${
@@ -116,6 +136,33 @@ const DashboardLayout = () => {
               )}
             </NavLink>
           ))}
+
+          {roleSwitchItems.length > 0 && (
+            <div className="pt-4 mt-4 border-t border-white/5">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 px-4 mb-2.5">Switch Role</p>
+              <div className="space-y-1">
+                {roleSwitchItems.map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={async () => {
+                      setSwitchingRole(true);
+                      await switchRole(item.role);
+                      setSwitchingRole(false);
+                      setSidebarOpen(false);
+                    }}
+                    disabled={switchingRole}
+                    className="group flex w-full items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative overflow-hidden text-white/40 hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
+                  >
+                    <span className="text-[14px] shrink-0 transition-colors text-white/30 group-hover:text-white/60">
+                      <FaChartLine className="h-[1.1rem] w-[1.1rem]" />
+                    </span>
+                    <span className="font-black text-[10px] uppercase tracking-normal">Switch to {item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* User Info Section */}
@@ -194,6 +241,33 @@ const DashboardLayout = () => {
               )}
             </NavLink>
           ))}
+
+          {roleSwitchItems.length > 0 && (
+            <div className="pt-4 mt-4 border-t border-white/5">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 px-4 mb-4">Switch Role</p>
+              <div className="space-y-1">
+                {roleSwitchItems.map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={async () => {
+                      setSwitchingRole(true);
+                      await switchRole(item.role);
+                      setSwitchingRole(false);
+                      setSidebarOpen(false);
+                    }}
+                    disabled={switchingRole}
+                    className="group flex w-full items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative text-white/40 hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
+                  >
+                    <span className="text-sm shrink-0 text-white/30">
+                      <FaChartLine className="h-4 w-4" />
+                    </span>
+                    <span className="font-black text-[11px] uppercase tracking-[0.15em]">Switch to {item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* User Info Section (Mobile) */}

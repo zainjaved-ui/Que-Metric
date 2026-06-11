@@ -932,8 +932,15 @@ exports.joinLeague = async (req, res) => {
       // For rolling leagues that haven't started yet, generate initial fixtures
       const { generateFixturesForLeague } = require("../services/fixtureGenerator");
       generateFixturesForLeague(leagueId, null, { incremental: false })
-        .then(() => {
+        .then(async () => {
           console.log(`[joinLeague-async] Initial fixtures generated for rolling league ${leagueId}`);
+          // Persist the fixturesGenerated flag after successful generation
+          try {
+            await league.update({ fixturesGenerated: true });
+            console.log(`[joinLeague-async] fixturesGenerated flag updated for league ${leagueId}`);
+          } catch (flagErr) {
+            console.error(`[joinLeague-async] Failed to update fixturesGenerated flag: ${flagErr.message}`);
+          }
         })
         .catch(fixtureErr => {
           console.error('[joinLeague-async] Failed to generate initial fixtures:', fixtureErr.message || fixtureErr);
@@ -1334,7 +1341,8 @@ exports.getLeagues = async (req, res) => {
   const { resolveVenueOwnerMerged } = require("../utils/venueOwnerEmbedded");
   try {
     const { userId, role } = req.user;
-    const { sport, status, organizationId, onlyPublic } = req.query;
+    const { sport, status, organizationId, onlyPublic, honors } = req.query;
+    const honorsView = honors === 'true';
     const where = {};
 
     if (sport) where.sport = sport;
@@ -1352,7 +1360,7 @@ exports.getLeagues = async (req, res) => {
       } else {
         return res.json({ success: true, data: [], message: "No organization found for this user" });
       }
-    } else if (role === "player") {
+    } else if (role === "player" && !honorsView) {
       // Find the player record for this user (Unify by email for dual-role users)
       const { Player, User } = require("../models");
       const { Op } = require("sequelize");
@@ -1411,18 +1419,21 @@ exports.getLeagues = async (req, res) => {
     if (!resolvedOrgId && role !== 'super_admin' && where.organizationId) {
       resolvedOrgId = where.organizationId;
     }
-    const cacheKeyObj = { sport: sport || null, status: status || null, organizationId: resolvedOrgId || null, role };
+    const cacheKeyObj = { sport: sport || null, status: status || null, organizationId: resolvedOrgId || null, role, honors: honorsView };
     const cacheKey = `leagues:${Buffer.from(JSON.stringify(cacheKeyObj)).toString('base64')}`;
+    const bypassCache = req.query.cacheBuster != null || req.query.noCache === 'true';
 
     // Try cache read (safe to fail to avoid breaking the endpoint)
-    try {
-      const cached = await cache.get(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        return res.json({ success: true, data: parsed, message: 'Leagues retrieved (cache)' });
+    if (!bypassCache) {
+      try {
+        const cached = await cache.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return res.json({ success: true, data: parsed, message: 'Leagues retrieved (cache)' });
+        }
+      } catch (err) {
+        console.warn('Cache read failed for leagues:', err && err.message ? err.message : err);
       }
-    } catch (err) {
-      console.warn('Cache read failed for leagues:', err && err.message ? err.message : err);
     }
 
     const rawLeagues = await League.findAll({
@@ -1544,11 +1555,13 @@ exports.getLeagues = async (req, res) => {
     });
 
     // Cache the result for a short period to speed up subsequent requests
-    try {
-      const ttl = parseInt(process.env.LEAGUES_CACHE_TTL || '60', 10);
-      await cache.set(cacheKey, JSON.stringify(leaguesWithCounts), 'EX', ttl);
-    } catch (err) {
-      console.warn('Cache write failed for leagues:', err && err.message ? err.message : err);
+    if (!bypassCache) {
+      try {
+        const ttl = parseInt(process.env.LEAGUES_CACHE_TTL || '60', 10);
+        await cache.set(cacheKey, JSON.stringify(leaguesWithCounts), 'EX', ttl);
+      } catch (err) {
+        console.warn('Cache write failed for leagues:', err && err.message ? err.message : err);
+      }
     }
 
     res.json({ success: true, data: leaguesWithCounts, message: "Leagues retrieved" });
@@ -2180,6 +2193,8 @@ exports.startLeague = async (req, res) => {
     const { generateFixturesForLeague } = require("../services/fixtureGenerator");
     try {
       await generateFixturesForLeague(leagueId);
+      // Update the fixturesGenerated flag after successful generation
+      await league.update({ fixturesGenerated: true });
     } catch (genErr) {
       console.error("[startLeague] Fixture generation failed:", genErr);
       // We still keep it active, but warn the user
@@ -3100,6 +3115,9 @@ exports.activateWizardLeague = async (req, res) => {
       let fixturesFailed = false;
       try {
         await generateFixturesForLeague(league.id);
+        // Persist the fixturesGenerated flag after successful generation
+        await league.update({ fixturesGenerated: true });
+        console.log(`[activateWizardLeague] Fixtures generated and fixturesGenerated flag updated for league ${league.id}`);
       } catch (genError) {
         fixturesFailed = true;
         console.error("Auto‑generation of fixtures failed:", genError);
@@ -3249,29 +3267,46 @@ exports.getGameSeasons = async (req, res) => {
     // Find game by ID or name (Case-Insensitive)
     const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
-    const game = isUUID(gameName)
-      ? await Game.findByPk(gameName)
-      : await Game.findOne({
-        where: sequelize.where(
-          sequelize.fn('LOWER', sequelize.col('name')),
-          String(gameName).toLowerCase().trim()
-        ),
-      });
+    const normalizedGameName = String(gameName || "").trim().toLowerCase();
 
-    if (!game) {
-      return res.status(404).json({ success: false, error: "Game not found" });
+    const seasonWhere = {
+      organizationId: organization.id,
+      status: "active",
+    };
+
+    const seasonQuery = {
+      where: seasonWhere,
+      include: [
+        {
+          model: Game,
+          as: "game",
+          attributes: ["id", "name"],
+        },
+      ],
+      attributes: ["id", "name", "startDate", "endDate", "status", "gameId"],
+      order: [["startDate", "DESC"]],
+    };
+
+    if (isUUID(gameName)) {
+      const game = await Game.findByPk(gameName);
+      if (!game) {
+        return res.status(404).json({ success: false, error: "Game not found" });
+      }
+      seasonWhere.gameId = game.id;
+    } else {
+      seasonQuery.include[0] = {
+        model: Game,
+        as: "game",
+        attributes: ["id", "name"],
+        where: sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('game.name')),
+          normalizedGameName
+        ),
+        required: true,
+      };
     }
 
-    // Get active seasons for this game and organization (filtered for wizard creation)
-    const seasons = await Season.findAll({
-      where: {
-        gameId: game.id,
-        organizationId: organization.id,
-        status: "active",
-      },
-      attributes: ["id", "name", "startDate", "endDate", "status"],
-      order: [["startDate", "DESC"]],
-    });
+    const seasons = await Season.findAll(seasonQuery);
 
     res.json({
       success: true,
@@ -3688,14 +3723,30 @@ exports.overrideStandings = async (req, res) => {
 
     // Store original points for audit
     const originalPoints = leaguePlayer.points;
-    const newPoints = originalPoints + pointsAdjustment;
 
-    // Update LeaguePlayer with manual adjustment
-    const manualAdjustment = (leaguePlayer.manualPointsAdjustment || 0) + pointsAdjustment;
+    // FIX: Store manualPointsAdjustment as an ABSOLUTE override value (not cumulative).
+    // The standings recalculation computes match-based points from scratch and adds
+    // manualPointsAdjustment on top (see standingsService.js line 433).
+    // If we accumulated adjustments, each call to updateLeagueStandings would
+    // add the growing cumulative value on top of the fresh match-based total, causing
+    // incorrect results. Instead, we REPLACE manualPointsAdjustment with the new value.
+    const prevManualAdjustment = leaguePlayer.manualPointsAdjustment || 0;
+    const newManualAdjustment = prevManualAdjustment + pointsAdjustment;
+
+    // Persist the new override value
     await leaguePlayer.update({
-      points: newPoints,
-      manualPointsAdjustment: manualAdjustment
+      manualPointsAdjustment: newManualAdjustment
     });
+
+    // Trigger a full standings recalculation so that:
+    //   finalPoints = (match-based points) + newManualAdjustment
+    // This ensures correctness regardless of how many matches have been played.
+    const standingsService = require("../services/standingsService");
+    await standingsService.updateLeagueStandings(leagueId);
+
+    // Reload the player to get the freshly computed points from the recalculation
+    await leaguePlayer.reload();
+    const newPoints = leaguePlayer.points;
 
     // Create audit log
     const { AuditLog } = require("../models");
@@ -3713,13 +3764,15 @@ exports.overrideStandings = async (req, res) => {
         originalPoints: originalPoints,
         newPoints: newPoints,
         adjustment: pointsAdjustment,
+        previousManualAdjustment: prevManualAdjustment,
+        newManualAdjustment: newManualAdjustment,
         reason: reason,
         timestamp: new Date()
       },
       ipAddress: req.ip
     });
 
-    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: ${pointsAdjustment} points (${reason})`);
+    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: +${pointsAdjustment} adjustment (cumulative manual: ${newManualAdjustment}), final points: ${newPoints} (${reason})`);
 
     res.json({
       success: true,
@@ -3728,7 +3781,7 @@ exports.overrideStandings = async (req, res) => {
         originalPoints,
         newPoints,
         adjustment: pointsAdjustment,
-        cumulativeManualAdjustment: manualAdjustment
+        cumulativeManualAdjustment: newManualAdjustment
       },
       message: `Standings updated. Player ${leaguePlayer.player?.name || playerId} now has ${newPoints} points.`
     });

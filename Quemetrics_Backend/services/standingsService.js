@@ -135,18 +135,26 @@ async function updateLeagueStandings(leagueId) {
 
         if (!p1 || !p2) continue;
 
-        // Handle Withdrawal Behaviour (e.g., Void all matches if option is set)
-        const withdrawalBehaviour = advanced?.withdrawal || 'keepPlayed';
-        if (withdrawalBehaviour === 'voidAll') {
+        // Parse rData EARLY so we can check if it's an explicit withdrawal auto-loss/whitewash
+        let rData = {};
+        try {
+            if (result.notes && result.notes.startsWith('{')) {
+                rData = JSON.parse(result.notes);
+            }
+        } catch (e) { }
+
+        const isWalkoverMatch = rData?.isWalkover || rData?.isManualWalkover || result.isWalkover === true || result.isWalkover === 1;
+        let withdrawalRule = rData?.withdrawalRule;
+
+        // Fallback for older walkover records that did not embed JSON
+        if (!withdrawalRule && isWalkoverMatch && result.notes === 'Automated bye due to player withdrawal.') {
             if (p1.status === 'withdrawn' || p2.status === 'withdrawn') {
-                console.log(`[standingsService] Voiding match ${result.id} because a player has withdrawn`);
-                continue;
+                withdrawalRule = 'whitewash';
             }
         }
 
-        // Check if this is a walkover match - walkovers should not affect standings/points
-        const rData = typeof result.resultData === 'string' ? JSON.parse(result.resultData || '{}') : (result.resultData || {});
-        const isWalkoverMatch = rData?.isWalkover || rData?.isManualWalkover || result.isWalkover === true || result.isWalkover === 1;
+        // Note: 'voidAll' behavior is handled at the very end of this calculation by zeroing out the withdrawn player's final stats, 
+        // to ensure active opponents keep their points from those historical games as requested by the user.
 
         // Participation Points - SKIP for walkovers
         if (pointsSystem.bonuses?.participation && !isWalkoverMatch) {
@@ -157,10 +165,9 @@ async function updateLeagueStandings(leagueId) {
             p2.points += pPoints;
         }
 
-        if (!isWalkoverMatch) {
-            p1.matchesPlayed += 1;
-            p2.matchesPlayed += 1;
-        }
+        // For ALL matches (regular and walkovers), increment matches played
+        p1.matchesPlayed += 1;
+        p2.matchesPlayed += 1;
 
         // 4b. Aggregate Frames/Racks Won (Base Stats) - SKIP for walkovers
         const leagueSport = String(league.sport).toLowerCase();
@@ -312,23 +319,30 @@ async function updateLeagueStandings(leagueId) {
             const winnerIdStr = isP1Winner ? player1Id : player2Id;
             const loserIdStr = isP1Winner ? player2Id : player1Id;
 
-            if (!isWalkoverMatch) {
-                winner.matchesWon += 1;
-                loser.matchesLost += 1;
-            }
+            // For ALL matches (regular and walkovers), increment match wins/losses
+            // This ensures walkovers count towards total match records
+            winner.matchesWon += 1;
+            loser.matchesLost += 1;
 
-            // Track walkover wins/losses separately
+            // Track walkover wins/losses separately for detailed reporting
             if (isWalkoverMatch) {
-                winner.walkoverWins += 1;
-                loser.walkoverLosses += 1;
-                winner.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover win
-                loser.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover loss
+                if (!['whitewash', 'forfeit'].includes(withdrawalRule)) {
+                    winner.walkoverWins += 1;
+                    loser.walkoverLosses += 1;
+                }
+
+                // Only push WO records to history if they are standard walkovers
+                // We DO NOT update streak history for auto-withdrawals based on user request ('in standing table streak not update')
+                if (!['whitewash', 'forfeit'].includes(withdrawalRule)) {
+                    winner.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover win
+                    loser.matchHistory.push({ date: result.createdAt, outcome: 'WO' }); // Walkover loss
+                }
             } else {
                 winner.matchHistory.push({ date: result.createdAt, outcome: 'W' });
                 loser.matchHistory.push({ date: result.createdAt, outcome: 'L' });
             }
 
-            // Base Points - SKIP for walkovers
+            // Base Points
             if (!isWalkoverMatch) {
                 let wPoints = pointsSystem.win ?? 3;
                 let lPoints = pointsSystem.loss ?? 0;
@@ -345,7 +359,14 @@ async function updateLeagueStandings(leagueId) {
 
                 winner.headToHead[loserIdStr] = (winner.headToHead[loserIdStr] || 0) + wPoints;
                 loser.headToHead[winnerIdStr] = (loser.headToHead[winnerIdStr] || 0) + lPoints;
+            } else if (withdrawalRule === 'whitewash') {
+                // Whitewash gives 2 points to winner
+                winner.points += 2;
+                winner.headToHead[loserIdStr] = (winner.headToHead[loserIdStr] || 0) + 2;
+                loser.headToHead[winnerIdStr] = (loser.headToHead[winnerIdStr] || 0) + 0;
+            }
 
+            if (!isWalkoverMatch) {
                 // Whitewash Statistic - ALWAYS count for stats if loser got 0 frames
                 const winnerScore = isP1Winner ? f1 : f2;
                 const loserScore = isP1Winner ? f2 : f1;
@@ -416,8 +437,36 @@ async function updateLeagueStandings(leagueId) {
     }
 
     // 5. Update each LeaguePlayer record
+    const withdrawalBehaviourFinal = advanced?.withdrawal || 'keepPlayed';
+
     const updatePromises = leaguePlayers.map(lp => {
         const stats = statsMap[lp.playerId];
+
+        // Final Rule Injection: "when i withdraw and option from league is void all matches then only withdraw player stats become 0 remiang player remian the sme"
+        if (withdrawalBehaviourFinal === 'voidAll' && stats.status === 'withdrawn') {
+            stats.matchesPlayed = 0;
+            stats.matchesWon = 0;
+            stats.matchesLost = 0;
+            stats.draws = 0;
+            stats.framesWon = 0;
+            stats.framesLost = 0;
+            stats.whitewashes = 0;
+            stats.highestBreak = 0;
+            stats.points = 0;
+            stats.participationPoints = 0;
+            stats.bonusPoints = 0;
+            stats.walkoverWins = 0;
+            stats.walkoverLosses = 0;
+            stats.breaks50Plus = 0;
+            stats.breaks100Plus = 0;
+            stats.ballsPotted = 0;
+            stats.ballsConceded = 0;
+            stats.sevenBallWins = 0;
+            stats.blackFinishes = 0;
+            stats.whitewashWins = 0;
+            stats.matchHistory = [];
+        }
+
         const winPercentage = stats.matchesPlayed > 0 ? (stats.matchesWon / stats.matchesPlayed) * 100 : 0;
 
         return lp.update({

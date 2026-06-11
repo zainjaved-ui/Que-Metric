@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { Link, Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
+  FaChartLine,
   FaHome,
   FaUser,
   FaEnvelope,
@@ -20,9 +21,10 @@ import logo from '../../../assets/logo.png';
 
 const VenueOwnerLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout, switchRole } = useContext(AuthContext);
   const { venueOwner, getProfile } = useContext(VenueOwnerContext);
   const navigate = useNavigate();
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   React.useEffect(() => {
     if (!venueOwner) {
@@ -93,6 +95,24 @@ const VenueOwnerLayout = () => {
 
   ];
 
+  const roleConfig = {
+    player: { label: 'Player', path: '/player/dashboard' },
+    organization: { label: 'Organizer', path: '/organization/dashboard' },
+    venue_owner: { label: 'Venue Owner', path: '/venue-owner/dashboard' },
+    super_admin: { label: 'Admin', path: '/admin/dashboard' },
+  };
+
+  const roleSwitchItems = Array.isArray(user?.availableRoles)
+    ? user.availableRoles
+        .map((roleItem) => (typeof roleItem === 'string' ? { role: roleItem } : roleItem))
+        .filter((roleItem) => roleItem?.role && roleItem.role !== user?.role)
+        .map((roleItem) => ({
+          role: roleItem.role,
+          label: roleConfig[roleItem.role]?.label || roleItem.role,
+          path: roleConfig[roleItem.role]?.path || '/',
+        }))
+    : [];
+
   const getNavLinkClasses = ({ isActive }) =>
     `group flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative overflow-hidden ${
       isActive
@@ -151,6 +171,33 @@ const VenueOwnerLayout = () => {
               )}
             </NavLink>
           ))}
+
+          {roleSwitchItems.length > 0 && (
+            <div className="pt-4 mt-4 border-t border-white/5">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 px-4 mb-3">Switch Role</p>
+              <div className="space-y-1">
+                {roleSwitchItems.map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={async () => {
+                      setSwitchingRole(true);
+                      await switchRole(item.role);
+                      setSwitchingRole(false);
+                      setSidebarOpen(false);
+                    }}
+                    disabled={switchingRole}
+                    className="group flex w-full items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative overflow-hidden text-white/40 hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
+                  >
+                    <span className="text-[14px] flex-shrink-0 transition-colors text-white/30 group-hover:text-white/60">
+                      <FaChartLine className="h-[1.1rem] w-[1.1rem]" />
+                    </span>
+                    <span className="font-black text-[10px] uppercase tracking-normal mt-0.5">Switch to {item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* User Info Section */}
@@ -225,6 +272,33 @@ const VenueOwnerLayout = () => {
               <span className="text-xs font-medium">{item.label}</span>
             </NavLink>
           ))}
+
+          {roleSwitchItems.length > 0 && (
+            <div className="pt-4 mt-4 border-t border-[#1A3F5C]">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 px-4 mb-4">Switch Role</p>
+              <div className="space-y-1">
+                {roleSwitchItems.map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={async () => {
+                      setSwitchingRole(true);
+                      await switchRole(item.role);
+                      setSwitchingRole(false);
+                      setSidebarOpen(false);
+                    }}
+                    disabled={switchingRole}
+                    className="flex w-full items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative text-white/40 hover:bg-white/5 hover:text-white/80 disabled:opacity-60"
+                  >
+                    <span className="text-sm shrink-0 text-white/30">
+                      <FaChartLine className="h-4 w-4" />
+                    </span>
+                    <span className="font-black text-[11px] uppercase tracking-[0.15em]">Switch to {item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* User Info Section (Mobile) */}

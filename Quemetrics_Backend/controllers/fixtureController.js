@@ -130,6 +130,10 @@ exports.generateFixtures = async (req, res) => {
     const options = { incremental: mode === 'incremental' };
     const fixtures = await generateFixturesForLeague(leagueId, divisionId, options);
 
+    // Update the fixturesGenerated flag on the league
+    league.fixturesGenerated = true;
+    await league.save();
+
     res.json({
       success: true,
       message: `${fixtures.length} fixtures generated successfully`,
@@ -326,7 +330,7 @@ async function enrichBookingsWithVenueData(bookings) {
 exports.getFixtures = async (req, res) => {
   try {
     const { leagueId } = req.params;
-    const { divisionId, round, status } = req.query;
+    const { divisionId, round, status, playerId } = req.query;
 
     // Ensure fixture columns exist (e.g. date) before selection
     await ensureFixtureColumns();
@@ -391,7 +395,21 @@ exports.getFixtures = async (req, res) => {
     const where = { leagueId };
     if (divisionId) where.divisionId = divisionId;
     if (round) where.round = round;
-    if (status) where.status = status;
+
+    if (status) {
+      if (status.includes(',')) {
+        where.status = { [Op.in]: status.split(',').map(s => s.trim()) };
+      } else {
+        where.status = status;
+      }
+    }
+
+    if (playerId) {
+      where[Op.or] = [
+        { player1Id: playerId },
+        { player2Id: playerId }
+      ];
+    }
 
     let structure = league?.structure || {};
     if (typeof structure === 'string') {
@@ -444,7 +462,7 @@ exports.getFixtures = async (req, res) => {
         },
         {
           association: "matchResult",
-          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
+          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "winnerId", "tieBreakWinnerId", "tieBreakMethod", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
         }
       ],
       order: [
@@ -539,7 +557,7 @@ exports.getFixtureById = async (req, res) => {
         },
         {
           association: "matchResult",
-          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
+          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "winnerId", "tieBreakWinnerId", "tieBreakMethod", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
         }
       ]
     });
@@ -654,7 +672,8 @@ exports.recordMatchResult = async (req, res) => {
     try {
       if (league.structure) {
         const structure = typeof league.structure === 'string' ? JSON.parse(league.structure) : league.structure;
-        if (structure.format === 'knockout' || structure.format === 'groupKnockout') {
+        const structureFormat = String(structure?.format || '').toLowerCase();
+        if (structureFormat === 'knockout' || structureFormat === 'groupsknockout' || structureFormat === 'groupknockout') {
           isKnockoutFormat = true;
         }
       }

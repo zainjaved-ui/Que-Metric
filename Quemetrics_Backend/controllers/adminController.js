@@ -17,6 +17,30 @@ const sequelize = require("../config/db");
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 
+const computeSeasonStatus = (season) => {
+  const start = season?.startDate ? new Date(season.startDate) : null;
+  const end = season?.endDate ? new Date(season.endDate) : null;
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return season?.status || "upcoming";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (start <= today && end >= today) return "active";
+  if (end < today) return "completed";
+  return "upcoming";
+};
+
+const serializeSeason = (season) => {
+  if (!season) return season;
+  const plain = typeof season.toJSON === "function" ? season.toJSON() : { ...season };
+  return {
+    ...plain,
+    status: computeSeasonStatus(plain),
+  };
+};
+
 const buildMergedEmailAlias = (primaryEmail, duplicateId) => {
   const [localPartRaw, domainRaw] = String(primaryEmail || "").split("@");
   const localPart = localPartRaw || "merged-user";
@@ -723,7 +747,7 @@ exports.getAllSeasons = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        seasons,
+        seasons: seasons.map(serializeSeason),
         pagination: {
           total: count,
           page: parseInt(page),
@@ -794,7 +818,7 @@ exports.getSeasonById = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: season,
+      data: serializeSeason(season),
       message: "Season retrieved successfully"
     });
 
@@ -1071,7 +1095,7 @@ exports.getCurrentSeason = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: currentSeason,
+      data: serializeSeason(currentSeason),
       message: "Current season retrieved successfully"
     });
 

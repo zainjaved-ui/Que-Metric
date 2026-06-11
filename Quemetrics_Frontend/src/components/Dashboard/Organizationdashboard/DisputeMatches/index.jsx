@@ -507,7 +507,7 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
   } else if (matchRules) {
     parsedRules = matchRules;
   }
-  const isOverallPointsEnabled = !matchRules || parsedRules.scoreDetail === 'points';
+  const isFrameByFrameMode = parsedRules.scoreDetail === 'frame_by_frame';
 
   useEffect(() => {
     if (dispute) {
@@ -577,14 +577,30 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
         }
       }
 
+      const p1Id = dispute.player1Id || dispute.matchResult?.player1Id;
+      const p2Id = dispute.player2Id || dispute.matchResult?.player2Id;
+
+      const finalP1Total = dispute.finalPlayer1Frames || claimedP1Total || initialP1Total;
+      const finalP2Total = dispute.finalPlayer2Frames || claimedP2Total || initialP2Total;
+
+      // Auto-determine winner based on points when in overall-only mode
+      let autoWinnerId = dispute.finalWinnerId || dispute.matchResult?.winnerId || '';
+      if (!isFrameByFrameMode && !autoWinnerId) {
+        if (finalP1Total > finalP2Total) {
+          autoWinnerId = p1Id;
+        } else if (finalP2Total > finalP1Total) {
+          autoWinnerId = p2Id;
+        }
+      }
+
       setResolutionData({
-        finalWinnerId: dispute.finalWinnerId || dispute.matchResult?.winnerId || '',
+        finalWinnerId: autoWinnerId,
 
         // Final values for resolution (default to claimed values when available, otherwise submitted)
-        finalPlayer1Frames: dispute.finalPlayer1Frames || claimedP1Total || initialP1Total,
-        finalPlayer2Frames: dispute.finalPlayer2Frames || claimedP2Total || initialP2Total,
-        finalPlayer1RackWins: dispute.finalPlayer1RackWins || claimedP1Total || initialP1Total,
-        finalPlayer2RackWins: dispute.finalPlayer2RackWins || claimedP2Total || initialP2Total,
+        finalPlayer1Frames: finalP1Total,
+        finalPlayer2Frames: finalP2Total,
+        finalPlayer1RackWins: finalP1Total,
+        finalPlayer2RackWins: finalP2Total,
 
         // Store initial derived totals for display as well
         initialP1Total,
@@ -616,10 +632,36 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
       }
     }
 
-    setResolutionData(prev => ({
-      ...prev,
-      ...updateObj
-    }));
+    setResolutionData(prev => {
+      // Auto-declare winner based on points in overall-only mode
+      if (!isFrameByFrameMode) {
+        const p1Id = dispute.player1Id || dispute.matchResult?.player1Id;
+        const p2Id = dispute.player2Id || dispute.matchResult?.player2Id;
+        
+        const p1Score = (isSnooker || isPooker) 
+          ? (field === 'finalPlayer1Frames' ? intValue : (prev.finalPlayer1Frames || 0))
+          : (field === 'finalPlayer1RackWins' ? intValue : (prev.finalPlayer1RackWins || 0));
+        
+        const p2Score = (isSnooker || isPooker) 
+          ? (field === 'finalPlayer2Frames' ? intValue : (prev.finalPlayer2Frames || 0))
+          : (field === 'finalPlayer2RackWins' ? intValue : (prev.finalPlayer2RackWins || 0));
+        
+        if (p1Score > p2Score) {
+          updateObj.finalWinnerId = p1Id;
+        } else if (p2Score > p1Score) {
+          updateObj.finalWinnerId = p2Id;
+        } else if (p1Score === p2Score && p1Score === 0) {
+          // Reset winner if both are 0
+          updateObj.finalWinnerId = '';
+        }
+        // If equal and both > 0, keep existing winner
+      }
+
+      return {
+        ...prev,
+        ...updateObj
+      };
+    });
   };
 
   const handleFrameDetailChange = (index, field, value, isCheckbox = false) => {
@@ -775,7 +817,8 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
           </div>
         </div>
 
-        {/* Comparison Tables */}
+        {/* Comparison Tables - Only show in frame-by-frame mode */}
+        {isFrameByFrameMode && (
         <div className="space-y-6">
           {(() => {
             // Submitter Version (Original)
@@ -971,6 +1014,7 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
             );
           })()}
         </div>
+        )}
 
         <div className="grid grid-cols-2 gap-10">
           {/* Submitter Side */}
@@ -980,16 +1024,16 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
               <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.submitter?.name || dispute.submitter?.nickname || 'Submitter'}</div>
               <input
                 type="number"
-                readOnly={!isOverallPointsEnabled}
+                readOnly={isFrameByFrameMode}
                 value={(isSnooker || isPooker) ? (submitterIsP1 ? resolutionData.finalPlayer1Frames : resolutionData.finalPlayer2Frames) : (submitterIsP1 ? resolutionData.finalPlayer1RackWins : resolutionData.finalPlayer2RackWins)}
                 onChange={(e) => {
-                  if (!isOverallPointsEnabled) return;
+                  if (isFrameByFrameMode) return;
                   handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer1Frames' : 'finalPlayer2Frames') : (submitterIsP1 ? 'finalPlayer1RackWins' : 'finalPlayer2RackWins'), e.target.value)
                 }}
-                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-600 outline-none transition-all ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
+                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-blue-600 outline-none transition-all ${isFrameByFrameMode ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
               />
               <div className="text-[10px] font-bold text-gray-400 mt-3">{(isSnooker || isPooker) ? 'Final Frames' : 'Final Racks'}</div>
-              {!isOverallPointsEnabled && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
+              {isFrameByFrameMode && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
             </div>
             <button
               onClick={() => setResolutionData(p => ({ ...p, finalWinnerId: dispute.submitterId }))}
@@ -1009,16 +1053,16 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
               <div className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">{dispute.opponent?.name || dispute.opponent?.nickname || 'Opponent'}</div>
               <input
                 type="number"
-                readOnly={!isOverallPointsEnabled}
+                readOnly={isFrameByFrameMode}
                 value={(isSnooker || isPooker) ? (submitterIsP1 ? resolutionData.finalPlayer2Frames : resolutionData.finalPlayer1Frames) : (submitterIsP1 ? resolutionData.finalPlayer2RackWins : resolutionData.finalPlayer1RackWins)}
                 onChange={(e) => {
-                  if (!isOverallPointsEnabled) return;
+                  if (isFrameByFrameMode) return;
                   handleScoreChange((isSnooker || isPooker) ? (submitterIsP1 ? 'finalPlayer2Frames' : 'finalPlayer1Frames') : (submitterIsP1 ? 'finalPlayer2RackWins' : 'finalPlayer1RackWins'), e.target.value)
                 }}
-                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-red-600 outline-none transition-all ${!isOverallPointsEnabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
+                className={`w-24 text-5xl font-black text-center bg-white border-2 border-gray-100 rounded-2xl p-4 focus:border-red-600 outline-none transition-all ${isFrameByFrameMode ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
               />
               <div className="text-[10px] font-bold text-gray-400 mt-3">{(isSnooker || isPooker) ? 'Final Frames' : 'Final Racks'}</div>
-              {!isOverallPointsEnabled && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
+              {isFrameByFrameMode && <div className="text-[7px] font-bold text-gray-400 mt-1 uppercase">Auto-calculated</div>}
             </div>
             <button
               onClick={() => setResolutionData(p => ({ ...p, finalWinnerId: dispute.opponentId }))}
