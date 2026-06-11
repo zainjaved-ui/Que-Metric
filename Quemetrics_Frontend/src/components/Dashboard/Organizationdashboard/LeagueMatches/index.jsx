@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getImageUrl } from "../../../../utils/imageUtils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -968,6 +968,8 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
 export default function LeagueMatches() {
   const [searchParams] = useSearchParams();
   const leagueIdFromUrl = searchParams.get('leagueId');
+  const clubIdFromUrl = searchParams.get('clubId');
+  const gameIdFromUrl = searchParams.get('gameId');
   const {
     getLeagues,
     getLeagueById,
@@ -993,6 +995,7 @@ export default function LeagueMatches() {
   const [leagues, setLeagues] = useState([]);
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [allLeagues, setAllLeagues] = useState([]);
+  const applyingDeepLinkRef = useRef(false);
 
   // Admin action permissions (configured per-league in advanced settings)
   const canEditFixtures = selectedLeague?.advanced?.adminEditFixtures;
@@ -1356,21 +1359,36 @@ export default function LeagueMatches() {
       const targetLeague = allLeagues.find(l => String(l.id) === String(leagueIdFromUrl));
       if (targetLeague) {
         console.log(`[LeagueMatches] 🎯 Deep-linking to league: ${targetLeague.name} (ID: ${targetLeague.id})`);
+        applyingDeepLinkRef.current = true;
         setSelectedLeague(targetLeague);
 
+        const resolvedClubId = clubIdFromUrl || targetLeague.clubId || targetLeague.basicInfo?.clubId || null;
+        const resolvedGameId = gameIdFromUrl || targetLeague.gameId || targetLeague.basicInfo?.gameId || null;
+
         // Auto-select club and game to populate dropdowns correctly if they exist
-        if (clubs.length > 0) {
-          const club = clubs.find(c => c.id === targetLeague.clubId);
+        if (clubs.length > 0 && resolvedClubId) {
+          const club = clubs.find(c => String(c.id) === String(resolvedClubId));
           if (club) setSelectedClub(club);
         }
 
-        if (allGames.length > 0) {
-          const game = allGames.find(g => g.name === targetLeague.basicInfo?.gameName);
+        if (allGames.length > 0 && resolvedGameId) {
+          const game = allGames.find(g => String(g.id) === String(resolvedGameId));
+          if (game) setSelectedGame(game);
+        } else if (allGames.length > 0) {
+          const targetGameName = String(targetLeague.basicInfo?.gameName || targetLeague.gameName || '').trim().toLowerCase();
+          const game = allGames.find(g => String(g.name || '').trim().toLowerCase() === targetGameName);
           if (game) setSelectedGame(game);
         }
       }
     }
-  }, [leagueIdFromUrl, allLeagues, clubs, allGames, selectedLeague]);
+  }, [leagueIdFromUrl, clubIdFromUrl, gameIdFromUrl, allLeagues, clubs, allGames, selectedLeague]);
+
+  useEffect(() => {
+    if (!applyingDeepLinkRef.current || !leagueIdFromUrl) return;
+    if (selectedLeague?.id && String(selectedLeague.id) === String(leagueIdFromUrl) && selectedClub && selectedGame) {
+      applyingDeepLinkRef.current = false;
+    }
+  }, [leagueIdFromUrl, selectedLeague?.id, selectedClub, selectedGame]);
 
   // Effect 2: Listen for league data changes (e.g., when players are added)
   // This depends on selectedLeague to correctly refresh the current selection
@@ -1463,6 +1481,10 @@ export default function LeagueMatches() {
 
   // When club changes, update available games and leagues
   useEffect(() => {
+    if (applyingDeepLinkRef.current && leagueIdFromUrl) {
+      return;
+    }
+
     if (selectedClub) {
       // Filter leagues by the selected club (league.clubId should match the selected club id)
       // Fall back to using clubName if clubId is missing.
@@ -1509,6 +1531,10 @@ export default function LeagueMatches() {
 
   // When game changes, update leagues
   useEffect(() => {
+    if (applyingDeepLinkRef.current && leagueIdFromUrl) {
+      return;
+    }
+
     if (selectedClub && selectedGame) {
       // Filter leagues by both the selected club and selected game
       const clubGameLeagues = allLeagues.filter(league => {

@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaAward,
@@ -137,12 +137,35 @@ function EventCard({ event }) {
   const SportIcon = sportIconMap[sportKey] || FaTrophy;
   const placements = event.placements || [];
   const date = getEventDate(event);
+  const navigate = useNavigate();
+
+  const handleOpenLeague = () => {
+    if (!event?.id) return;
+
+    const isOrganizerView = String(event?.userRole || '').toLowerCase() !== 'player';
+    const eventType = String(event?.eventType || 'league').toLowerCase();
+
+    const targetPath = eventType === 'tournament'
+      ? (isOrganizerView ? `/organization/tournaments/${event.id}` : '/player/my-tournaments')
+      : (isOrganizerView ? `/organization/leaguematchmanagement?leagueId=${event.id}` : `/player/leagues?leagueId=${event.id}`);
+
+    navigate(targetPath);
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="overflow-hidden rounded-[2rem] border border-[#132F45]/10 bg-white shadow-xl shadow-[#132F45]/5"
+      onClick={handleOpenLeague}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleOpenLeague();
+        }
+      }}
+      className="overflow-hidden rounded-[2rem] border border-[#132F45]/10 bg-white shadow-xl shadow-[#132F45]/5 cursor-pointer transition-transform duration-200 hover:-translate-y-1"
     >
       <div className="bg-gradient-to-r from-[#132F45] to-[#1a4259] px-6 py-5 text-white">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -229,6 +252,7 @@ export default function HonorsPage() {
               name: league.name,
               sport: league.sport,
               eventType: 'league',
+              userRole: user?.role,
               seasonLabel: getSeasonLabel(league, 'Season'),
               completedAt: getEventDate(league)?.toISOString() || league.updatedAt || league.createdAt,
               placements: getPlacementRows(standings),
@@ -246,6 +270,7 @@ export default function HonorsPage() {
               name: tournament.name,
               sport: tournament.sport,
               eventType: 'tournament',
+              userRole: user?.role,
               seasonLabel: getSeasonLabel(tournament, 'Season'),
               completedAt: getEventDate(tournament)?.toISOString() || tournament.updatedAt || tournament.createdAt,
               placements: getPlacementRows(standings),
