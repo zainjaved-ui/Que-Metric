@@ -1862,9 +1862,16 @@ async function seedGroupKnockoutQualifiers(leagueId) {
   for (const div of divisions) {
     const standings = await standingsService.getSortedStandings(leagueId, div.id);
     for (let i = 0; i < Math.min(qualifiersPerGroup, standings.length); i++) {
+      // CRITICAL FIX: Skip withdrawn players from knockout seeding
+      if (standings[i].status === 'withdrawn') {
+        console.log(`[seedGroupKnockoutQualifiers] Skipping withdrawn player ${standings[i].playerId} from knockout seeding`);
+        continue;
+      }
       allQualifiers.push({ player: standings[i], groupRank: i + 1, divisionName: div.name });
     }
   }
+
+  console.log(`[seedGroupKnockoutQualifiers] Qualified players after filtering withdrawn: ${allQualifiers.length} (total ${allQualifiers.map(q => q.player.playerId).join(', ')})`);
 
   // Seeding: Determine how to order these qualifiers in the bracket
   const seedingMethod = structure.knockout?.seeding || 'ranked';
@@ -1901,7 +1908,9 @@ async function seedGroupKnockoutQualifiers(leagueId) {
     });
   }
 
-  const totalQualifiers = isGK ? (divisions.length * qualifiersPerGroup) : qualifiersPerGroup;
+  // CRITICAL: Use actual qualified count after filtering withdrawn players
+  const totalQualifiers = allQualifiers.length;
+  console.log(`[seedGroupKnockoutQualifiers] Total qualifiers after filtering withdrawn: ${totalQualifiers} (was expected: ${isGK ? (divisions.length * qualifiersPerGroup) : qualifiersPerGroup})`);
 
   let round1Fixtures = await Fixture.findAll({
     where: { 
@@ -1996,6 +2005,8 @@ async function seedGroupKnockoutQualifiers(leagueId) {
     const newStatus = (!player1 && !player2) ? 'scheduled' :
       (player1 && player2) ? 'scheduled' : 'bye';
 
+    console.log(`[seedGroupKnockoutQualifiers] Seeding match ${m+1} (fixtures.id=${fixture.id}): Seed#${p1SeedNum}=${player1} vs Seed#${p2SeedNum}=${player2} → status=${newStatus}`);
+
     await fixture.update({
       player1Id: player1,
       player2Id: player2,
@@ -2004,10 +2015,13 @@ async function seedGroupKnockoutQualifiers(leagueId) {
       winnerId: newStatus === 'bye' ? (player1 || player2) : null
     });
 
+    console.log(`[seedGroupKnockoutQualifiers] Match ${fixture.id} SEEDED: player1=${player1}, player2=${player2}, status=${newStatus}, winnerId=${newStatus === 'bye' ? (player1 || player2) : null}`);
+
     // Auto-advance byes immediately
     if (newStatus === 'bye') {
       const byeWinner = player1 || player2;
       if (byeWinner) {
+        console.log(`[seedGroupKnockoutQualifiers] Auto-advancing bye winner ${byeWinner} from match ${fixture.id}...`);
         await module.exports.advanceKnockoutWinner(fixture.id, byeWinner);
       }
     }

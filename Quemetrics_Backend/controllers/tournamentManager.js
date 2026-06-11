@@ -1803,10 +1803,13 @@ const WithdrawalHandler = {
       throw new Error("Withdrawal is not allowed for this tournament status");
     }
 
+    // Allow both "approved" (normal) and "withdrawn" (already withdrew from league) participants
     const participant = await TournamentParticipant.findOne({
-      where: { tournamentId, playerId, status: "approved" },
+      where: { tournamentId, playerId, status: { [Op.in]: ["approved", "withdrawn"] } },
     });
-    if (!participant) throw new Error("Player is not an approved participant");
+    if (!participant) throw new Error("Player is not a participant in this tournament");
+
+    console.log(`[processWithdrawal] Found participant: id=${participant.id}, status=${participant.status} (already withdrawn from league: ${participant.status === "withdrawn"})`);
 
     // Resolve withdrawal rules (with per-tournament overrides or sensible defaults)
     // withdrawalRules is stored as JSON string in DB, so parse it first
@@ -1997,9 +2000,13 @@ const WithdrawalHandler = {
         const totalMatches = allPlayerMatches.length;
         const completionPct = totalMatches > 0 ? (completedMatches.length / totalMatches) : 0;
 
+        console.log(`[processWithdrawal] Group stage progress: completedMatches=${completedMatches.length}/${totalMatches} (${(completionPct * 100).toFixed(1)}%)`);
+
         if (completionPct < 0.5) {
           // <50% completed: void ALL their results
+          console.log(`[processWithdrawal] <50% completed: voiding ALL ${allPlayerMatches.length} group stage matches for player ${playerId}`);
           for (const match of allPlayerMatches) {
+            console.log(`[processWithdrawal] Voiding group match ${match.id}: round=${match.roundNumber}`);
             await match.update({ status: "voided" });
             voidedMatches++;
           }
@@ -2009,8 +2016,14 @@ const WithdrawalHandler = {
           const pendingMatches = allPlayerMatches.filter(m =>
             m.status === "scheduled" || m.status === "pending_confirmation" || m.status === "in_progress"
           );
+          console.log(`[processWithdrawal] >=50% completed: forfeiting ${pendingMatches.length} pending group stage matches for player ${playerId}`);
+          
           for (const match of pendingMatches) {
             const isP1 = match.player1Id === playerId;
+            const opponentId = isP1 ? match.player2Id : match.player1Id;
+            
+            console.log(`[processWithdrawal] Group stage walkover: match=${match.id}, withdrawn=${playerId}, opponent=${opponentId}, isP1=${isP1}`);
+            
             await match.update({
               status: "completed",
               winner: isP1 ? "player2" : "player1",
@@ -2018,6 +2031,8 @@ const WithdrawalHandler = {
               player1FramesWon: isP1 ? 0 : 1,
               player2FramesWon: isP1 ? 1 : 0,
             });
+            console.log(`[processWithdrawal] Group walkover match ${match.id} marked: winner=${isP1 ? "player2" : "player1"}`);
+            
             walkoverMatchIds.push(match.id);
             if (match.roundNumber != null) roundsToProgress.add(match.roundNumber);
             forfeitedMatches++;
@@ -2047,6 +2062,8 @@ const WithdrawalHandler = {
         // Match is marked as voided — NO POINTS, NO WINNER, NO PROGRESSION
         console.log(`[processWithdrawal] Applying VOID rule to ${pendingMatches.length} pending knockout matches`);
         for (const match of pendingMatches) {
+          console.log(`[processWithdrawal] Voiding match: id=${match.id}, round=${match.roundNumber}, matchNum=${match.matchNumber}, player1=${match.player1Id}, player2=${match.player2Id}`);
+          
           await match.update({
             status: "voided",
             winner: null,  // CRITICAL: Clear winner so no points awarded
@@ -2054,7 +2071,7 @@ const WithdrawalHandler = {
             player2FramesWon: null,
             isWalkover: false,  // NOT a walkover - it's voided
           });
-          console.log(`[processWithdrawal] Voided match ${match.id}: status=voided, winner=null`);
+          console.log(`[processWithdrawal] Voided match ${match.id}: status=voided, winner=null, frames cleared`);
           voidedMatches++;
         }
         action = "voided_knockout_match";
@@ -2062,6 +2079,10 @@ const WithdrawalHandler = {
         // "walkover" (default): opponent wins and bracket can advance
         for (const match of pendingMatches) {
           const isP1 = match.player1Id === playerId;
+          const opponentId = isP1 ? match.player2Id : match.player1Id;
+          
+          console.log(`[processWithdrawal] Processing walkover: match=${match.id}, round=${match.roundNumber}, matchNum=${match.matchNumber}, withdrawn=${playerId}, opponent=${opponentId}, isP1=${isP1}`);
+          
           await match.update({
             status: "completed",
             winner: isP1 ? "player2" : "player1",
@@ -2069,9 +2090,21 @@ const WithdrawalHandler = {
             player1FramesWon: isP1 ? 0 : 1,
             player2FramesWon: isP1 ? 1 : 0,
           });
+          console.log(`[processWithdrawal] Walkover match ${match.id} marked as completed: winner=${isP1 ? "player2" : "player1"}, isWalkover=true`);
+          
           walkoverMatchIds.push(match.id);
           if (match.roundNumber != null) roundsToProgress.add(match.roundNumber);
           forfeitedMatches++;
+          
+          // CRITICAL FIX: Automatically advance opponent to next round (create bye if needed)
+          console.log(`[processWithdrawal] Starting bracket advancement: match=${match.id} is in round=${match.roundNumber} matchNum=${match.matchNumber}, advancing opponent ${opponentId}...`);
+          await this.advanceTournamentWinnerToNextRound(
+            tournamentId,
+            match.roundNumber,
+            match.matchNumber,
+            opponentId
+          );
+          console.log(`[processWithdrawal] Completed bracket advancement for opponent ${opponentId}`);
         }
         action = `walkover_${stage}`;
       }
@@ -2166,6 +2199,99 @@ const RegistrationManager = {
     }
 
     return participant;
+  },
+
+  /**
+   * Automatically advance a tournament winner to the next round (create bye if needed).
+   * Called when a player withdraws in knockout and opponent needs to advance.
+   */
+  async advanceTournamentWinnerToNextRound(tournamentId, currentRound, currentMatchNumber, winnerId) {
+    try {
+      if (!currentRound || currentMatchNumber === undefined) return;
+
+      const nextRound = currentRound + 1;
+      const nextMatchNumber = Math.ceil(currentMatchNumber / 2);
+
+      console.log(`[advanceTournamentWinnerToNextRound] Starting: winnerId=${winnerId}, currentRound=${currentRound}, currentMatchNumber=${currentMatchNumber} → nextRound=${nextRound}, nextMatchNumber=${nextMatchNumber}`);
+
+      // Find or create the next round match
+      const nextMatch = await TournamentMatch.findOne({
+        where: {
+          tournamentId,
+          roundNumber: nextRound,
+          matchNumber: nextMatchNumber,
+          status: { [Op.ne]: "completed" }
+        }
+      });
+
+      if (nextMatch) {
+        console.log(`[advanceTournamentWinnerToNextRound] Found next match: id=${nextMatch.id}, player1Id=${nextMatch.player1Id}, player2Id=${nextMatch.player2Id}, status=${nextMatch.status}`);
+
+        // Determine if winner goes to player1 or player2 slot
+        const isPlayer1Slot = currentMatchNumber % 2 === 1;
+        console.log(`[advanceTournamentWinnerToNextRound] Slot calculation: currentMatchNumber=${currentMatchNumber} % 2 = ${currentMatchNumber % 2}, isPlayer1Slot=${isPlayer1Slot}`);
+
+        // Update the next match with the winner
+        if (isPlayer1Slot) {
+          console.log(`[advanceTournamentWinnerToNextRound] Updating player1Id: ${winnerId}`);
+          await nextMatch.update({ player1Id: winnerId });
+        } else {
+          console.log(`[advanceTournamentWinnerToNextRound] Updating player2Id: ${winnerId}`);
+          await nextMatch.update({ player2Id: winnerId });
+        }
+
+        console.log(`[advanceTournamentWinnerToNextRound] Advanced ${winnerId} to R${nextRound}M${nextMatchNumber} (slot: ${isPlayer1Slot ? 'player1' : 'player2'})`);
+
+        // CRITICAL: Reload to get updated values after the update
+        await nextMatch.reload();
+        console.log(`[advanceTournamentWinnerToNextRound] After reload: id=${nextMatch.id}, player1Id=${nextMatch.player1Id}, player2Id=${nextMatch.player2Id}, status=${nextMatch.status}`);
+
+        // If the next match is now a bye (only one player), mark it as such
+        const hasPlayer1 = !!nextMatch.player1Id;
+        const hasPlayer2 = !!nextMatch.player2Id;
+        
+        console.log(`[advanceTournamentWinnerToNextRound] Bye check: hasPlayer1=${hasPlayer1}, hasPlayer2=${hasPlayer2}`);
+        
+        if ((hasPlayer1 && !hasPlayer2) || (!hasPlayer1 && hasPlayer2)) {
+          const byePlayer = nextMatch.player1Id || nextMatch.player2Id;
+          const byeWinnerSlot = nextMatch.player1Id ? "player1" : "player2";
+          
+          console.log(`[advanceTournamentWinnerToNextRound] >>> BYE DETECTED: byePlayer=${byePlayer}, byeWinnerSlot=${byeWinnerSlot}`);
+          console.log(`[advanceTournamentWinnerToNextRound] >>> SETTING BYE STATUS ON MATCH ${nextMatch.id}...`);
+          
+          const updateResult = await nextMatch.update({
+            status: "bye",
+            winner: byeWinnerSlot,
+            isWalkover: true,
+            player1FramesWon: byeWinnerSlot === "player1" ? 1 : 0,
+            player2FramesWon: byeWinnerSlot === "player2" ? 1 : 0,
+          });
+          
+          console.log(`[advanceTournamentWinnerToNextRound] >>> BYE UPDATE RESULT:`, {
+            id: updateResult.id,
+            status: updateResult.status,
+            winner: updateResult.winner,
+            isWalkover: updateResult.isWalkover,
+            player1FramesWon: updateResult.player1FramesWon,
+            player2FramesWon: updateResult.player2FramesWon,
+          });
+
+          // Verify bye was saved correctly by reloading again
+          await nextMatch.reload();
+          console.log(`[advanceTournamentWinnerToNextRound] >>> AFTER FINAL RELOAD: status=${nextMatch.status}, winner=${nextMatch.winner}`);
+
+          // Recursively advance the bye winner to the round after
+          console.log(`[advanceTournamentWinnerToNextRound] >>> Recursively advancing bye winner ${byePlayer}...`);
+          await this.advanceTournamentWinnerToNextRound(tournamentId, nextRound, nextMatchNumber, byePlayer);
+        } else {
+          console.log(`[advanceTournamentWinnerToNextRound] Not a bye: both player1Id and player2Id are set or both are empty`);
+        }
+      } else {
+        console.log(`[advanceTournamentWinnerToNextRound] >>> CRITICAL: Next round match NOT FOUND: R${nextRound}M${nextMatchNumber} - bye cannot be created!`);
+      }
+    } catch (error) {
+      console.error(`[advanceTournamentWinnerToNextRound] >>> ERROR:`, error.message, error.stack);
+    }
   }
 };
 
