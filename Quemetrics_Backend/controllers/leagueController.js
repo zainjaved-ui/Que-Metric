@@ -3696,6 +3696,10 @@ exports.overrideStandings = async (req, res) => {
       });
     }
 
+    // CRITICAL: Reload to ensure we have the latest DB values, especially manualPointsAdjustment
+    // This prevents stale reads when multiple overrides happen in succession
+    await leaguePlayer.reload();
+
     // Check if player has withdrawn
     if (leaguePlayer.status === 'withdrawn') {
       return res.status(400).json({
@@ -3706,30 +3710,48 @@ exports.overrideStandings = async (req, res) => {
 
     // Store original points for audit
     const originalPoints = leaguePlayer.points;
+    console.log(`\n[OVERRIDE DEBUG] === START OVERRIDE ===`);
+    console.log(`[OVERRIDE DEBUG] Player ID: ${playerId}`);
+    console.log(`[OVERRIDE DEBUG] League ID: ${leagueId}`);
+    console.log(`[OVERRIDE DEBUG] Current Points from ORM: ${leaguePlayer.points}`);
+    console.log(`[OVERRIDE DEBUG] Current manualPointsAdjustment from ORM: ${leaguePlayer.manualPointsAdjustment}`);
 
-    // FIX: Store manualPointsAdjustment as an ABSOLUTE override value (not cumulative).
-    // The standings recalculation computes match-based points from scratch and adds
-    // manualPointsAdjustment on top (see standingsService.js line 433).
-    // If we accumulated adjustments, each call to updateLeagueStandings would
-    // add the growing cumulative value on top of the fresh match-based total, causing
-    // incorrect results. Instead, we REPLACE manualPointsAdjustment with the new value.
-    const prevManualAdjustment = leaguePlayer.manualPointsAdjustment || 0;
+    // CRITICAL FIX: Reload from DB to get fresh values
+    console.log(`[OVERRIDE DEBUG] Reloading leaguePlayer from DB...`);
+    await leaguePlayer.reload();
+    console.log(`[OVERRIDE DEBUG] After reload - manualPointsAdjustment: ${leaguePlayer.manualPointsAdjustment}`);
+    
+    const prevManualAdjustment = (leaguePlayer.manualPointsAdjustment || 0);
+    console.log(`[OVERRIDE DEBUG] Previous Manual Adjustment (from DB): ${prevManualAdjustment}`);
+    console.log(`[OVERRIDE DEBUG] Incoming points adjustment: ${pointsAdjustment}`);
+    
     const newManualAdjustment = prevManualAdjustment + pointsAdjustment;
+    console.log(`[OVERRIDE DEBUG] Calculated new manual adjustment: ${prevManualAdjustment} + ${pointsAdjustment} = ${newManualAdjustment}`);
 
     // Persist the new override value
     await leaguePlayer.update({
       manualPointsAdjustment: newManualAdjustment
     });
+    console.log(`[OVERRIDE DEBUG] Updated DB: manualPointsAdjustment = ${newManualAdjustment}`);
 
     // Trigger a full standings recalculation so that:
     //   finalPoints = (match-based points) + newManualAdjustment
     // This ensures correctness regardless of how many matches have been played.
     const standingsService = require("../services/standingsService");
+    console.log(`[OVERRIDE DEBUG] About to recalculate standings...`);
     await standingsService.updateLeagueStandings(leagueId);
+    console.log(`[OVERRIDE DEBUG] Standings recalculation complete`);
 
     // Reload the player to get the freshly computed points from the recalculation
     await leaguePlayer.reload();
     const newPoints = leaguePlayer.points;
+    
+    console.log(`[OVERRIDE DEBUG] After recalculation - DB values:`, {
+      manualPointsAdjustment: leaguePlayer.manualPointsAdjustment,
+      points: leaguePlayer.points
+    });
+    console.log(`[OVERRIDE DEBUG] Final Points from ORM reload: ${newPoints}`);
+    console.log(`[OVERRIDE DEBUG] === END OVERRIDE ===\n`);
 
     // Create audit log
     const { AuditLog } = require("../models");
@@ -3755,7 +3777,7 @@ exports.overrideStandings = async (req, res) => {
       ipAddress: req.ip
     });
 
-    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: +${pointsAdjustment} adjustment (cumulative manual: ${newManualAdjustment}), final points: ${newPoints} (${reason})`);
+    console.log(`[overrideStandings] Admin ${userId} adjusted standings for player ${playerId} in league ${leagueId}: ${pointsAdjustment > 0 ? '+' : ''}${pointsAdjustment} adjustment (cumulative manual: ${newManualAdjustment}), final points: ${newPoints} (${reason})`);
 
     res.json({
       success: true,
@@ -3766,7 +3788,7 @@ exports.overrideStandings = async (req, res) => {
         adjustment: pointsAdjustment,
         cumulativeManualAdjustment: newManualAdjustment
       },
-      message: `Standings updated. Player ${leaguePlayer.player?.name || playerId} now has ${newPoints} points.`
+      message: `Standings updated. Player ${leaguePlayer.player?.name || playerId} now has ${newPoints} points (+${pointsAdjustment} adjustment, cumulative: ${newManualAdjustment}).`
     });
   } catch (error) {
     console.error("overrideStandings error:", error);
@@ -3815,6 +3837,50 @@ exports.leaveLeague = async (req, res) => {
     if (league.status === 'active') {
       // If active, we should probably mark as withdrawn rather than deleting
       await enrollment.update({ status: 'withdrawn' });
+      
+      // CRITICAL: Process withdrawn player's knockout matches to create byes
+      const { Fixture } = require("../models");
+      const knockoutMatches = await Fixture.findAll({
+        where: {
+          leagueId,
+          stage: { [Op.in]: ['knockout', 'groupsKnockout'] },
+          status: { [Op.in]: ['scheduled', 'pending_confirmation', 'in_progress'] },
+          [Op.or]: [{ player1Id: player.id }, { player2Id: player.id }]
+        }
+      });
+
+      console.log(`[leaveLeague] Player ${player.id} withdrawn. Found ${knockoutMatches.length} pending knockout matches to process.`);
+
+      // For each withdrawn player's knockout match, create bye for opponent
+      for (const match of knockoutMatches) {
+        const isP1 = match.player1Id === player.id;
+        const opponentId = isP1 ? match.player2Id : match.player1Id;
+
+        if (!opponentId) {
+          // No opponent in this match yet, just clear the withdrawn player
+          console.log(`[leaveLeague] Match ${match.id}: withdrawn player ${player.id} is solo, no opponent to advance`);
+          await match.update({ 
+            [isP1 ? 'player1Id' : 'player2Id']: null 
+          });
+          continue;
+        }
+
+        console.log(`[leaveLeague] Match ${match.id}: withdrawn=${player.id}, opponent=${opponentId}. Creating bye and advancing opponent...`);
+
+        // Mark this match as bye and advance opponent to next round
+        await match.update({
+          status: 'bye',
+          winner: isP1 ? 'player2' : 'player1',
+          winnerId: opponentId,
+        });
+
+        console.log(`[leaveLeague] Match ${match.id} marked as bye for opponent ${opponentId}`);
+
+        // Advance opponent to next round
+        const { advanceKnockoutWinner } = require("../services/fixtureGenerator");
+        await advanceKnockoutWinner(match.id, opponentId);
+      }
+
       // Trigger standings recalculation
       const standingsService = require("../services/standingsService");
       await standingsService.updateLeagueStandings(leagueId);

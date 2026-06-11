@@ -99,6 +99,7 @@ async function updateLeagueStandings(leagueId) {
             divisionId: lp.divisionId,
             status: lp.status, // Track player status
             manualPointsAdjustment: lp.manualPointsAdjustment || 0, // Track manual adjustments
+            leaguePlayerId: lp.id, // Track for debugging
             headToHead: {}, // To store results against other players: { opponentId: points }
             matchHistory: [], // To store match outcomes for streak calculation: [{ date: Date, result: 'W'|'L'|'D'|'WO' }]
             breaks50Plus: 0,
@@ -111,6 +112,9 @@ async function updateLeagueStandings(leagueId) {
             opponents: [], // Track opponent IDs for Swiss tie-breaks
             swissTieBreakScore: 0 // Store calculated Swiss score
         };
+        if (lp.manualPointsAdjustment && lp.manualPointsAdjustment !== 0) {
+            console.log(`[standingsService DEBUG] Player ${lp.playerId} has manualPointsAdjustment = ${lp.manualPointsAdjustment}`);
+        }
     });
 
     // 4. Process each match result
@@ -469,6 +473,11 @@ async function updateLeagueStandings(leagueId) {
 
         const winPercentage = stats.matchesPlayed > 0 ? (stats.matchesWon / stats.matchesPlayed) * 100 : 0;
 
+        const calculatedPoints = stats.points + (stats.manualPointsAdjustment || 0);
+        if (stats.manualPointsAdjustment && stats.manualPointsAdjustment !== 0) {
+            console.log(`[standingsService DEBUG] Updating player ${lp.playerId}: matchPoints=${stats.points}, manualAdj=${stats.manualPointsAdjustment}, final=${calculatedPoints}`);
+        }
+
         return lp.update({
             matchesPlayed: stats.matchesPlayed,
             matchesWon: stats.matchesWon,
@@ -479,7 +488,7 @@ async function updateLeagueStandings(leagueId) {
             frameDifference: stats.framesWon - stats.framesLost,
             whitewashes: stats.whitewashes,
             highestBreak: stats.highestBreak,
-            points: stats.points + (stats.manualPointsAdjustment || 0), // Include manual adjustment
+            points: calculatedPoints, // Include manual adjustment
             participationPoints: stats.participationPoints,
             bonusPoints: stats.bonusPoints,
             winPercentage: winPercentage,
