@@ -112,7 +112,7 @@ const TournamentMatch = sequelize.define(
     },
     // Match Status
     status: {
-      type: DataTypes.ENUM("scheduled", "in_progress", "completed", "disputed", "voided", "walkover", "default", "postponed", "pending_confirmation"),
+      type: DataTypes.ENUM("scheduled", "in_progress", "completed", "disputed", "voided", "walkover", "default", "postponed", "pending_confirmation", "bye"),
       allowNull: false,
       defaultValue: "scheduled",
       comment: "Current status of the match",

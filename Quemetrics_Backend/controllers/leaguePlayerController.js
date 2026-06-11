@@ -525,14 +525,39 @@ exports.overridePlayerStandings = async (req, res) => {
       });
     }
 
-    // Update adjustment fields
+    console.log(`\n[OVERRIDE DEBUG - leaguePlayerController] === START OVERRIDE ===`);
+    console.log(`[OVERRIDE DEBUG] League Player ID: ${leaguePlayerId}`);
+    console.log(`[OVERRIDE DEBUG] Current manualPointsAdjustment (ORM): ${leaguePlayer.manualPointsAdjustment}`);
+    console.log(`[OVERRIDE DEBUG] Current points (ORM): ${leaguePlayer.points}`);
+    
+    // CRITICAL: Reload to ensure fresh data from database
+    console.log(`[OVERRIDE DEBUG] Reloading leaguePlayer from DB...`);
+    await leaguePlayer.reload();
+    console.log(`[OVERRIDE DEBUG] After reload - manualPointsAdjustment: ${leaguePlayer.manualPointsAdjustment}`);
+    
+    const currentManualAdjustment = leaguePlayer.manualPointsAdjustment || 0;
+    const newManualAdjustmentValue = parseInt(manualPointsAdjustment, 10) || 0;
+    
+    console.log(`[OVERRIDE DEBUG] Incoming manualPointsAdjustment: ${newManualAdjustmentValue}`);
+    console.log(`[OVERRIDE DEBUG] Current stored manualPointsAdjustment: ${currentManualAdjustment}`);
+    
+    // FIXED: Make this CUMULATIVE to match the other override endpoint
+    // Each override adds to the existing adjustment, not replaces it
+    const cumulativeAdjustment = currentManualAdjustment + newManualAdjustmentValue;
+    console.log(`[OVERRIDE DEBUG] CUMULATIVE: ${currentManualAdjustment} + ${newManualAdjustmentValue} = ${cumulativeAdjustment}`);
+
+    // Update adjustment fields - NOW CUMULATIVE
     await leaguePlayer.update({
-      manualPointsAdjustment: parseInt(manualPointsAdjustment, 10) || 0,
+      manualPointsAdjustment: cumulativeAdjustment,
       adjustmentNotes: adjustmentNotes || null
     });
+    console.log(`[OVERRIDE DEBUG] Updated DB: manualPointsAdjustment = ${cumulativeAdjustment}`);
 
     // Trigger standings recalculation to apply the override
+    const standingsService = require("../services/standingsService");
+    console.log(`[OVERRIDE DEBUG] About to recalculate standings...`);
     await standingsService.updateLeagueStandings(leagueId);
+    console.log(`[OVERRIDE DEBUG] Standings recalculation complete`);
 
     const result = await LeaguePlayer.findByPk(leaguePlayer.id, {
       include: [
@@ -540,6 +565,9 @@ exports.overridePlayerStandings = async (req, res) => {
         { association: "division", attributes: ["id", "name"] }
       ]
     });
+    console.log(`[OVERRIDE DEBUG] Final points after reload: ${result.points}`);
+    console.log(`[OVERRIDE DEBUG] Final manualPointsAdjustment: ${result.manualPointsAdjustment}`);
+    console.log(`[OVERRIDE DEBUG] === END OVERRIDE ===\n`);
 
     res.json({
       success: true,
