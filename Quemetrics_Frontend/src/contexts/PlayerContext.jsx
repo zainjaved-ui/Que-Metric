@@ -51,11 +51,14 @@ export function PlayerProvider({ children }) {
       const dataToSend = {
         name: updateData.name || '',
         nickname: updateData.nickname || '',
+        dateOfBirth: updateData.dateOfBirth || '',
         phoneNumber: updateData.phoneNumber || '',
         address: updateData.address || '',
         bio: updateData.bio || '',
         sports: updateData.sports || ['snooker'],
         disabilityFlag: updateData.disabilityFlag || false,
+        identityChangeReason: updateData.identityChangeReason || '',
+        nameChangeReason: updateData.nameChangeReason || '',
       };
 
       console.log('Sending to backend:', dataToSend); // Debug

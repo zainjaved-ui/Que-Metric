@@ -15,26 +15,61 @@ import {
 
 import { usePlayer } from '../../../../contexts/PlayerContext';
 import { LeagueContext } from '../../../../contexts/LeagueContext';
+import { TournamentContext } from '../../../../contexts/TournamentContext';
 import { AuthContext } from '../../../../contexts/AuthContext';
 import apiClient from '../../../../contexts/apiClient';
 import { getImageUrl } from '../../../../utils/imageUtils';
 import Loader from "../../../../components/ui/Loader";
 
 const StatCard = ({ label, value, icon: Icon }) => (
-  <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3 hover:border-[#BA995D]/30 transition-all">
-    <div className="p-2.5 bg-[#FDF2D1] rounded-lg text-[#BA995D]">
+  <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center text-center gap-2 min-w-0 min-h-[88px] hover:border-[#BA995D]/30 transition-all">
+    <div className="shrink-0 p-2.5 bg-[#FDF2D1] rounded-lg text-[#BA995D]">
       <Icon className="w-4 h-4" />
     </div>
-    <div>
-      <p className="text-[8px] font-black text-gray-400 uppercase tracking-[0.15em] mb-0.5">{label}</p>
-      <p className="text-sm font-black text-[#132F45] tracking-tight">{value}</p>
+    <div className="min-w-0 w-full">
+      <p className="text-[8px] sm:text-[9px] font-black text-gray-400 uppercase tracking-[0.15em] leading-tight mb-0.5 whitespace-normal break-words">{label}</p>
+      <p className="text-sm sm:text-base font-black text-[#132F45] tracking-tight leading-none whitespace-normal break-words">{value}</p>
     </div>
   </div>
 );
 
+const normalizeList = (value) => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.leagues)) return value.leagues;
+  if (Array.isArray(value?.tournaments)) return value.tournaments;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+};
+
+const getEventDate = (event) => {
+  const raw = event?.completedAt || event?.endDate || event?.updatedAt || event?.createdAt;
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getPlacementRows = (rows = []) => {
+  const sorted = [...rows].sort((left, right) => {
+    const leftPos = Number(left?.position || left?.rank || left?.place || 999);
+    const rightPos = Number(right?.position || right?.rank || right?.place || 999);
+    return leftPos - rightPos;
+  });
+
+  return sorted.slice(0, 3).map((row, index) => ({
+    position: Number(row?.position || row?.rank || row?.place || index + 1),
+    title: index === 0 ? 'Champion' : index === 1 ? 'Runner-up' : 'Third Place',
+    name: row?.playerName || row?.name || row?.player?.name || row?.player?.playerName || row?.playerNickname || row?.player?.nickname || 'Unknown Player',
+    subtitle: row?.playerEmail || row?.player?.user?.email || row?.playerNickname || (row?.points != null ? `${row?.points ?? 0} pts` : ''),
+    avatar: row?.playerAvatarUrl || row?.player?.avatarUrl || null,
+    playerId: row?.playerId || row?.player?.id || null,
+  }));
+};
+
 const Profile = () => {
-  const { player, loading: playerLoading, getProfile, updateProfile, uploadAvatar } = usePlayer();
+  const { player, loading: playerLoading, getProfile, updateProfile, uploadAvatar, getDashboardStats } = usePlayer();
   const { getLeagues } = useContext(LeagueContext);
+  const { getTournaments, getTournamentStandings } = useContext(TournamentContext);
   const { user } = useContext(AuthContext);
 
   const [myLeagues, setMyLeagues] = useState([]);
@@ -53,7 +88,9 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState("Snooker");
   const [statsFilter, setStatsFilter] = useState("both");
   const [profileStats, setProfileStats] = useState(null);
+  const [honorTitles, setHonorTitles] = useState([]);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [loadingHonors, setLoadingHonors] = useState(false);
   const [statsError, setStatsError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -152,14 +189,24 @@ const Profile = () => {
       }
     }
 
-    // Validate phone number if provided
-    if (formData.phoneNumber && !/^\d{11}$/.test(formData.phoneNumber)) {
+    const originalPhone = String(player?.phoneNumber || '');
+    const currentPhone = String(formData.phoneNumber || '');
+    const phoneChanged = currentPhone !== originalPhone;
+    const nameChanged = String(formData.name || '') !== String(player?.name || '');
+    const originalDob = player?.dateOfBirth ? player.dateOfBirth.split('T')[0] : '';
+    const dobChanged = String(formData.dateOfBirth || '') !== String(originalDob);
+
+    // Validate phone number only when it actually changes
+    if (phoneChanged && currentPhone && !/^\d{11}$/.test(currentPhone)) {
       toast.error("Phone number must be exactly 11 digits");
       return;
     }
 
     setIsSaving(true);
-    const result = await updateProfile(formData);
+    const result = await updateProfile({
+      ...formData,
+      ...((nameChanged || dobChanged) ? { identityChangeReason: formData.identityChangeReason || 'Profile correction' } : {}),
+    });
     setIsSaving(false);
 
     if (result.success) {
@@ -175,13 +222,12 @@ const Profile = () => {
     setStatsError(null);
 
     try {
-      const response = await apiClient.get(
-        `/player/dashboard/filtered-stats?leagueFilter=${statsFilter}&game=${activeTab}`
-      );
-      if (response.data?.success) {
-        setProfileStats(response.data.data);
+      const gameKey = String(activeTab || 'snooker').toLowerCase();
+      const response = await getDashboardStats(statsFilter, gameKey);
+      if (response?.success) {
+        setProfileStats(response.data);
       } else {
-        setStatsError(response.data?.error || "Failed to load stats");
+        setStatsError(response?.error || "Failed to load stats");
       }
     } catch (error) {
       setStatsError(error.response?.data?.error || "Failed to load stats");
@@ -189,7 +235,96 @@ const Profile = () => {
     } finally {
       setLoadingStats(false);
     }
-  }, [player, activeTab, statsFilter]);
+  }, [player, activeTab, statsFilter, getDashboardStats]);
+
+  const loadHonors = useCallback(async () => {
+    if (!player) return;
+    setLoadingHonors(true);
+    try {
+      const timestamp = Date.now();
+      const [leagueResult, tournamentResult] = await Promise.all([
+        getLeagues({ status: 'completed', honors: true, cacheBuster: timestamp }),
+        getTournaments({ status: 'completed', honors: true, page: 1, limit: 1000, cacheBuster: timestamp }),
+      ]);
+
+      if (!leagueResult.success && !tournamentResult.success) {
+        setHonorTitles([]);
+        return;
+      }
+
+      const leagues = normalizeList(leagueResult.data)
+        .slice()
+        .sort((left, right) => new Date(getEventDate(right) || right.updatedAt || right.createdAt || 0) - new Date(getEventDate(left) || left.updatedAt || left.createdAt || 0));
+      const tournaments = normalizeList(tournamentResult.data)
+        .slice()
+        .sort((left, right) => new Date(getEventDate(right) || right.updatedAt || right.createdAt || 0) - new Date(getEventDate(left) || left.updatedAt || left.createdAt || 0));
+
+      const playerHonors = [];
+      const seenHonors = new Set();
+
+      const leagueHonors = await Promise.allSettled(
+        leagues.map(async (league) => {
+          const standingsResult = await apiClient.get(`/leagues/${league.id}/standings`);
+          const standings = standingsResult.data?.data?.standings || standingsResult.data?.data || [];
+          const placements = getPlacementRows(standings);
+          const matchedPlacement = placements.find((placement) => {
+            const playerMatch = String(placement.playerId || '').toLowerCase() === String(player.id).toLowerCase();
+            const nameMatch = String(placement.name || '').toLowerCase() === String(player.name || '').toLowerCase();
+            return playerMatch || nameMatch;
+          });
+
+          return matchedPlacement ? {
+            id: league.id,
+            title: matchedPlacement.title,
+            name: matchedPlacement.name,
+            sport: league.sport,
+            leagueName: league.name,
+            date: getEventDate(league)?.toISOString() || league.updatedAt || league.createdAt,
+          } : null;
+        })
+      );
+
+      const tournamentHonors = await Promise.allSettled(
+        tournaments.map(async (tournament) => {
+          const standingsResult = await getTournamentStandings(tournament.id);
+          const standings = standingsResult.success ? normalizeList(standingsResult.data) : [];
+          const placements = getPlacementRows(standings);
+          const matchedPlacement = placements.find((placement) => {
+            const playerMatch = String(placement.playerId || '').toLowerCase() === String(player.id).toLowerCase();
+            const nameMatch = String(placement.name || '').toLowerCase() === String(player.name || '').toLowerCase();
+            return playerMatch || nameMatch;
+          });
+
+          return matchedPlacement ? {
+            id: tournament.id,
+            title: matchedPlacement.title,
+            name: matchedPlacement.name,
+            sport: tournament.sport,
+            leagueName: tournament.name,
+            date: getEventDate(tournament)?.toISOString() || tournament.updatedAt || tournament.createdAt,
+          } : null;
+        })
+      );
+
+      for (const result of [...leagueHonors, ...tournamentHonors]) {
+        if (result.status === 'fulfilled' && result.value) {
+          const honorKey = `${result.value.id}-${result.value.title}-${result.value.leagueName}`;
+          if (!seenHonors.has(honorKey)) {
+            seenHonors.add(honorKey);
+            playerHonors.push(result.value);
+          }
+        }
+      }
+
+      playerHonors.sort((left, right) => new Date(right.date || 0) - new Date(left.date || 0));
+      setHonorTitles(playerHonors);
+    } catch (error) {
+      console.error('Profile honors load error:', error);
+      setHonorTitles([]);
+    } finally {
+      setLoadingHonors(false);
+    }
+  }, [player, getLeagues, getTournaments, getTournamentStandings]);
 
   const loadExtras = useCallback(async () => {
     if (!player) return;
@@ -214,14 +349,14 @@ const Profile = () => {
     if (player) loadStats();
   }, [player, loadStats]);
 
+  useEffect(() => {
+    if (player) loadHonors();
+  }, [player, loadHonors]);
+
   // Combined Title Logic - Now using consolidated backend data
   const allTitles = useMemo(() => {
-    // Backend now provides these accurately in getAggregatedStats
-    return (player?.titles || []).filter(t => 
-      t.title?.toLowerCase().includes('champ') || 
-      t.title?.toLowerCase().includes('winner')
-    );
-  }, [player?.titles]);
+    return honorTitles;
+  }, [honorTitles]);
 
   const titleCount = allTitles.length;
 
@@ -248,7 +383,7 @@ const Profile = () => {
   });
 
 
-  const getSportStats = (sportId) => {
+  function getSportStats(sportId) {
     const sid = String(sportId).toLowerCase();
     if (profileStats?.stats && profileStats.stats[sid]) {
       return profileStats.stats[sid];
@@ -257,10 +392,17 @@ const Profile = () => {
       return player.aggregatedStats[sid];
     }
     return defaultStats[sid];
-  };
+  }
 
-  const leagueCount = profileStats?.leagues?.length || 0;
-  const tournamentCount = profileStats?.tournaments?.length || 0;
+  const dashboardOverallStats = profileStats?.overallStats || null;
+  const dashboardSeasonStats = profileStats?.seasonStats || null;
+
+  const activeDashboardStats = dashboardOverallStats || getSportStats(activeTab) || defaultStats[String(activeTab).toLowerCase()] || {};
+  const activeSeasonStats = dashboardSeasonStats || {};
+
+  const dashboardScopeLabel = profileStats?.filter
+    ? `${String(profileStats.filter.leagueFilter || statsFilter).toUpperCase()} · ${String(profileStats.filter.game || activeTab).toUpperCase()}`
+    : `${String(statsFilter).toUpperCase()} · ${String(activeTab).toUpperCase()}`;
 
   if (playerLoading || isSaving || loadingExtras) {
     return <Loader text={isSaving ? "Saving..." : "Loading Profile..."} />;
@@ -522,10 +664,55 @@ const Profile = () => {
                 ))}
                 <span className="text-[#6B7280] lowercase">Showing stats for {statsFilter === 'both' ? 'all competitions' : `${statsFilter} only`}</span>
               </div>
-              <div className="mb-6 text-[11px] text-[#475569]">
-                <span className="mr-4">Leagues: {leagueCount}</span>
-                <span>Tournaments: {tournamentCount}</span>
+              <div className="mb-6 text-[11px] text-[#475569] font-bold uppercase tracking-widest">
+                <span>{dashboardScopeLabel}</span>
               </div>
+
+              {profileStats?.overallStats && (
+                <div className="mb-6 rounded-2xl border border-[#FDF2D1] bg-[#FFFCF4] p-4">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#132F45]">{activeTab}</p>
+                      <p className="text-[11px] font-bold text-gray-500">Dashboard stats for the selected sport only</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-[#BA995D]">{profileStats?.filter?.leagueFilter || statsFilter}</p>
+                      <p className="text-[9px] font-bold text-gray-500 capitalize">{profileStats?.filter?.game || activeTab.toLowerCase()}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCard label="Matches" value={activeDashboardStats.totalMatches ?? activeDashboardStats.matches ?? 0} icon={FaChartLine} />
+                    <StatCard label="Wins" value={activeDashboardStats.totalWins ?? activeDashboardStats.wins ?? 0} icon={FaTrophy} />
+                    <StatCard label="Losses" value={activeDashboardStats.totalLosses ?? activeDashboardStats.losses ?? 0} icon={FaDice} />
+                    <StatCard label="Win %" value={`${activeDashboardStats.winRate ?? 0}%`} icon={FaBullseye} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <StatCard label="Walkover Wins" value={activeDashboardStats.walkoverWins ?? 0} icon={FaShieldAlt} />
+                    <StatCard label="Walkover Losses" value={activeDashboardStats.walkoverLosses ?? 0} icon={FaExclamationTriangle} />
+                    <StatCard label="Bye Excluded" value={activeDashboardStats.byeExcluded ?? 0} icon={FaCircle} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <StatCard label="Highest Break" value={activeDashboardStats.highestBreak ?? 0} icon={FaTrophy} />
+                    <StatCard label="Frames / Racks Won" value={activeDashboardStats.framesWon ?? activeDashboardStats.rackWinsTotal ?? 0} icon={FaMedal} />
+                    <StatCard label="Frames / Racks Lost" value={activeDashboardStats.framesConceded ?? activeDashboardStats.rackConcededTotal ?? 0} icon={FaDice} />
+                  </div>
+
+                  {dashboardSeasonStats && (
+                    <div className="mt-5 rounded-2xl bg-white border border-gray-100 p-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#132F45] mb-3">Season snapshot</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <StatCard label="Season Matches" value={dashboardSeasonStats.totalMatches ?? 0} icon={FaChartLine} />
+                        <StatCard label="Season Wins" value={dashboardSeasonStats.totalWins ?? 0} icon={FaTrophy} />
+                        <StatCard label="Season Losses" value={dashboardSeasonStats.totalLosses ?? 0} icon={FaDice} />
+                        <StatCard label="Season Win %" value={`${dashboardSeasonStats.winRate ?? 0}%`} icon={FaBullseye} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {loadingStats && (
                 <div className="mb-6 rounded-xl border border-[#FDF2D1] bg-[#FAFAFA] p-4 text-center text-sm text-[#6B7280]">
@@ -649,7 +836,16 @@ const Profile = () => {
               )}
 
               {/* Titles & Achievements Section */}
-              {allTitles.length > 0 && (
+              {loadingHonors && allTitles.length === 0 ? (
+                <div className="mt-8 pt-8 border-t border-gray-50/50">
+                  <h3 className="text-[8.5px] font-black text-[#132F45] uppercase tracking-widest mb-5 flex items-center gap-2.5">
+                    <FaMedal className="text-[#BA995D] text-xs" /> My Trophies
+                  </h3>
+                  <div className="rounded-2xl border border-dashed border-[#FDF2D1] bg-[#FAFAFA] px-4 py-6 text-center text-xs font-bold uppercase tracking-widest text-gray-400">
+                    Loading honors board...
+                  </div>
+                </div>
+              ) : allTitles.length > 0 ? (
                 <div className="mt-8 pt-8 border-t border-gray-50/50">
                   <h3 className="text-[8.5px] font-black text-[#132F45] uppercase tracking-widest mb-5 flex items-center gap-2.5">
                     <FaMedal className="text-[#BA995D] text-xs" /> My Trophies
@@ -675,6 +871,15 @@ const Profile = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-8 pt-8 border-t border-gray-50/50">
+                  <h3 className="text-[8.5px] font-black text-[#132F45] uppercase tracking-widest mb-5 flex items-center gap-2.5">
+                    <FaMedal className="text-[#BA995D] text-xs" /> My Trophies
+                  </h3>
+                  <div className="rounded-2xl border border-dashed border-[#FDF2D1] bg-[#FAFAFA] px-4 py-6 text-center text-xs font-bold uppercase tracking-widest text-gray-400">
+                    No honors found on the honors board yet.
                   </div>
                 </div>
               )}
