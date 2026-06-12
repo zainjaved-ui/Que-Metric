@@ -462,7 +462,7 @@ exports.getFixtures = async (req, res) => {
         },
         {
           association: "matchResult",
-          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
+          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "winnerId", "tieBreakWinnerId", "tieBreakMethod", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
         }
       ],
       order: [
@@ -557,7 +557,7 @@ exports.getFixtureById = async (req, res) => {
         },
         {
           association: "matchResult",
-          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
+          attributes: ["id", "imageUrl", "resultStatus", "notes", "isWalkover", "player1Frames", "player2Frames", "player1RackWins", "player2RackWins", "winnerId", "tieBreakWinnerId", "tieBreakMethod", "snookerFrameDetails", "poolRackDetails", "pookerFrameDetails"]
         }
       ]
     });
@@ -672,7 +672,8 @@ exports.recordMatchResult = async (req, res) => {
     try {
       if (league.structure) {
         const structure = typeof league.structure === 'string' ? JSON.parse(league.structure) : league.structure;
-        if (structure.format === 'knockout' || structure.format === 'groupKnockout') {
+        const structureFormat = String(structure?.format || '').toLowerCase();
+        if (structureFormat === 'knockout' || structureFormat === 'groupsknockout' || structureFormat === 'groupknockout') {
           isKnockoutFormat = true;
         }
       }

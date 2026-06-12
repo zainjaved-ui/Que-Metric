@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getImageUrl } from "../../../../utils/imageUtils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -209,6 +209,15 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       fixture.status === 'walkover' ||
       fixture.detailedStatus === 'WALKOVER';
 
+    // Preserve a persisted winner even when the top-level fixture winnerId is missing.
+    const resolvedWinnerId = fixture.winnerId ||
+      mr.winnerId ||
+      mr.tieBreakWinnerId ||
+      resDataObj?.tieBreakWinnerId ||
+      fixture.additionalData?.tieBreakWinnerId ||
+      fixture.additionalData?.resultData?.tieBreakWinnerId ||
+      null;
+
     // Identify draw (but NOT if it's knockout pool/pooker with auto-decided winner)
     const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
     const isKnockoutPoolPooker = (String(fixture.stage || '').toLowerCase() === 'knockout' || String(fixture.additionalData?.stage || '').toLowerCase() === 'knockout') && (sportName === 'pool' || sportName === 'pooker');
@@ -217,10 +226,10 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
     const scoresEqual = s1 === s2 && s1 > 0;
     
     // It's only a DRAW if scores are equal, NO winner ID, and it's not a KO pool/pooker with auto-decided winner
-    const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !fixture.winnerId;
+    const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !resolvedWinnerId;
     
     // Check if this is an auto-resolved knockout draw (has winnerId but scores are equal)
-    const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && fixture.winnerId;
+    const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && resolvedWinnerId;
 
     const isWhitewash = !isDraw && (fixture.detailedStatus === 'WHITEWASH' || (!isWalkover && (fixture.status === 'completed' || fixture.status === 'walkover') && (() => {
       const sportName = String(league?.sport || league?.basicInfo?.sport || fixture.sport || '').toLowerCase();
@@ -243,6 +252,7 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
       homeTeam: homeName,
       awayTeam: awayName,
       score: score,
+      winnerId: resolvedWinnerId,
       divisionId: fixture.divisionId,
       divisionName: division.name || 'Main Division',
       additionalData: fixture.additionalData || fixture.resultData || {},
@@ -958,6 +968,8 @@ const StandingsTable = ({ leagueId, divisionId, standingsDisplay, advancedSettin
 export default function LeagueMatches() {
   const [searchParams] = useSearchParams();
   const leagueIdFromUrl = searchParams.get('leagueId');
+  const clubIdFromUrl = searchParams.get('clubId');
+  const gameIdFromUrl = searchParams.get('gameId');
   const {
     getLeagues,
     getLeagueById,
@@ -983,6 +995,7 @@ export default function LeagueMatches() {
   const [leagues, setLeagues] = useState([]);
   const [selectedLeague, setSelectedLeague] = useState(null);
   const [allLeagues, setAllLeagues] = useState([]);
+  const applyingDeepLinkRef = useRef(false);
 
   // Admin action permissions (configured per-league in advanced settings)
   const canEditFixtures = selectedLeague?.advanced?.adminEditFixtures;
@@ -1346,21 +1359,36 @@ export default function LeagueMatches() {
       const targetLeague = allLeagues.find(l => String(l.id) === String(leagueIdFromUrl));
       if (targetLeague) {
         console.log(`[LeagueMatches] 🎯 Deep-linking to league: ${targetLeague.name} (ID: ${targetLeague.id})`);
+        applyingDeepLinkRef.current = true;
         setSelectedLeague(targetLeague);
 
+        const resolvedClubId = clubIdFromUrl || targetLeague.clubId || targetLeague.basicInfo?.clubId || null;
+        const resolvedGameId = gameIdFromUrl || targetLeague.gameId || targetLeague.basicInfo?.gameId || null;
+
         // Auto-select club and game to populate dropdowns correctly if they exist
-        if (clubs.length > 0) {
-          const club = clubs.find(c => c.id === targetLeague.clubId);
+        if (clubs.length > 0 && resolvedClubId) {
+          const club = clubs.find(c => String(c.id) === String(resolvedClubId));
           if (club) setSelectedClub(club);
         }
 
-        if (allGames.length > 0) {
-          const game = allGames.find(g => g.name === targetLeague.basicInfo?.gameName);
+        if (allGames.length > 0 && resolvedGameId) {
+          const game = allGames.find(g => String(g.id) === String(resolvedGameId));
+          if (game) setSelectedGame(game);
+        } else if (allGames.length > 0) {
+          const targetGameName = String(targetLeague.basicInfo?.gameName || targetLeague.gameName || '').trim().toLowerCase();
+          const game = allGames.find(g => String(g.name || '').trim().toLowerCase() === targetGameName);
           if (game) setSelectedGame(game);
         }
       }
     }
-  }, [leagueIdFromUrl, allLeagues, clubs, allGames, selectedLeague]);
+  }, [leagueIdFromUrl, clubIdFromUrl, gameIdFromUrl, allLeagues, clubs, allGames, selectedLeague]);
+
+  useEffect(() => {
+    if (!applyingDeepLinkRef.current || !leagueIdFromUrl) return;
+    if (selectedLeague?.id && String(selectedLeague.id) === String(leagueIdFromUrl) && selectedClub && selectedGame) {
+      applyingDeepLinkRef.current = false;
+    }
+  }, [leagueIdFromUrl, selectedLeague?.id, selectedClub, selectedGame]);
 
   // Effect 2: Listen for league data changes (e.g., when players are added)
   // This depends on selectedLeague to correctly refresh the current selection
@@ -1453,6 +1481,10 @@ export default function LeagueMatches() {
 
   // When club changes, update available games and leagues
   useEffect(() => {
+    if (applyingDeepLinkRef.current && leagueIdFromUrl) {
+      return;
+    }
+
     if (selectedClub) {
       // Filter leagues by the selected club (league.clubId should match the selected club id)
       // Fall back to using clubName if clubId is missing.
@@ -1499,6 +1531,10 @@ export default function LeagueMatches() {
 
   // When game changes, update leagues
   useEffect(() => {
+    if (applyingDeepLinkRef.current && leagueIdFromUrl) {
+      return;
+    }
+
     if (selectedClub && selectedGame) {
       // Filter leagues by both the selected club and selected game
       const clubGameLeagues = allLeagues.filter(league => {
@@ -4678,7 +4714,7 @@ function EditResultModal({ fixture, advancedSettings = {}, onClose, onUpdate }) 
               const isTie = s1 === s2 && (isPool ? formData.player1RackWins !== "" : formData.player1Frames !== "");
               const allowDraw = fixture.additionalData?.league?.matchRules?.allowDraw !== false;
 
-              if (!isTie || allowDraw) return null;
+              if (!isTie) return null;
 
               return (
                 <div className="bg-amber-50 p-5 rounded-2xl border-2 border-amber-100 space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -4687,7 +4723,9 @@ function EditResultModal({ fixture, advancedSettings = {}, onClose, onUpdate }) 
                     <h4 className="text-xs font-black uppercase tracking-widest">Tie-breaker Resolution Required</h4>
                   </div>
                   <p className="text-[11px] text-amber-600 font-bold leading-relaxed">
-                    This league does not allow draws. Please select the tie-break winner and the resolution method used.
+                    {allowDraw
+                      ? 'This league allows draws, but you can still record a tie-break winner if one was used.'
+                      : 'This league does not allow draws. Please select the tie-break winner and the resolution method used.'}
                   </p>
 
                   <div className="grid grid-cols-2 gap-4">

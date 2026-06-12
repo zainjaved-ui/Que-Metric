@@ -1,5 +1,6 @@
 import { LeagueContext } from '../../../../contexts/LeagueContext';
 import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../../../../contexts/AuthContext';
 import { PlayerContext } from '../../../../contexts/PlayerContext';
 import LeagueDetails from './LeagueDetails';
@@ -183,9 +184,10 @@ function LeagueCard({ league, joinedIds, onJoin, onView, joining, onCodeRequest 
 
 // ─── Main Player League Page ──────────────────────────────────────────────────
 export default function PlayerLeaguePage() {
+  const [searchParams] = useSearchParams();
     const [games, setGames] = useState([]);
     const [selectedGameId, setSelectedGameId] = useState(null);
-  const { getPublicLeagues, joinLeague, getLeagues, joinByCode, getAvailableGames, getLeaguesByGame } = useContext(LeagueContext);
+  const { getPublicLeagues, joinLeague, getLeagues, joinByCode, getAvailableGames, getLeaguesByGame, getLeagueById } = useContext(LeagueContext);
   const { user } = useContext(AuthContext);
   const { player, getProfile } = useContext(PlayerContext);
 
@@ -199,6 +201,8 @@ export default function PlayerLeaguePage() {
   const [toast, setToast] = useState(null);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [selectedLeagueForCode, setSelectedLeagueForCode] = useState(null);
+  const leagueIdFromUrl = searchParams.get('leagueId');
+  const [urlLeague, setUrlLeague] = useState(null);
 
   // Cache for league data to avoid unnecessary refetches
   const leagueCache = useRef(new Map());
@@ -211,8 +215,8 @@ export default function PlayerLeaguePage() {
         const data = await getAvailableGames();
         console.log('Available games:', data.data);
         setGames(data.data || []);
-        // Auto-select first game if available
-        if (data.data && data.data.length > 0) {
+        // Auto-select first game only when we are not deep-linking into a specific league.
+        if (!leagueIdFromUrl && data.data && data.data.length > 0) {
           setSelectedGameId(data.data[0].id);
         } else {
           setSelectedGameId(null);
@@ -224,7 +228,7 @@ export default function PlayerLeaguePage() {
       }
     };
     fetchGames();
-  }, [getAvailableGames]);
+  }, [getAvailableGames, leagueIdFromUrl]);
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
@@ -318,6 +322,57 @@ export default function PlayerLeaguePage() {
       fetchLeagues(selectedGameId);
     }
   }, [user?.id, selectedGameId, fetchLeagues]);
+
+  useEffect(() => {
+    if (!leagueIdFromUrl) return;
+
+    const loadLinkedLeague = async () => {
+      const leagueResult = await getLeagueById(leagueIdFromUrl);
+      if (!leagueResult.success || !leagueResult.data) return;
+
+      const league = leagueResult.data;
+      setUrlLeague(league);
+      setSelectedLeagueId(league.id);
+
+      const directGameId = league.gameId || league.game?.id || league.season?.gameId || league.season?.game?.id || null;
+      if (directGameId) {
+        setSelectedGameId(String(directGameId));
+        return;
+      }
+
+      const leagueSport = String(league.sport || league.gameName || league.season?.gameName || '').toLowerCase();
+      const matchingGame = games.find((game) => {
+        const gameName = String(game.name || game.gameName || '').toLowerCase();
+        return gameName === leagueSport || gameName.includes(leagueSport) || leagueSport.includes(gameName);
+      });
+
+      if (matchingGame) {
+        setSelectedGameId(String(matchingGame.id));
+      }
+    };
+
+    loadLinkedLeague();
+  }, [leagueIdFromUrl, getLeagueById, games]);
+
+  useEffect(() => {
+    if (!leagueIdFromUrl || !urlLeague || selectedGameId) return;
+
+    const directGameId = urlLeague.gameId || urlLeague.game?.id || urlLeague.season?.gameId || urlLeague.season?.game?.id || null;
+    if (directGameId) {
+      setSelectedGameId(String(directGameId));
+      return;
+    }
+
+    const leagueSport = String(urlLeague.sport || urlLeague.gameName || urlLeague.season?.gameName || '').toLowerCase();
+    const matchingGame = games.find((game) => {
+      const gameName = String(game.name || game.gameName || '').toLowerCase();
+      return gameName === leagueSport || gameName.includes(leagueSport) || leagueSport.includes(gameName);
+    });
+
+    if (matchingGame) {
+      setSelectedGameId(String(matchingGame.id));
+    }
+  }, [leagueIdFromUrl, urlLeague, games, selectedGameId]);
 
   const handleJoin = async (leagueId) => {
     setJoining(leagueId);

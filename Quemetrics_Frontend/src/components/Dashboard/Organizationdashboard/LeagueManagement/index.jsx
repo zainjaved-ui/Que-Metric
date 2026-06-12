@@ -433,7 +433,7 @@ const LeagueManagement = () => {
       <LoadingOverlay isOpen={loading || creatingLeague} message={loading ? "Loading Leagues..." : "Creating League..."} />
 
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">My LEagues</h1>
+        <h1 className="text-3xl font-bold">My Leagues</h1>
         {/* Original header button preserved for revert:
         <button
           onClick={() => setShowCreateModal(true)}
@@ -752,7 +752,13 @@ const LeagueManagement = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/organization/leaguematchmanagement?leagueId=${league.id}`);
+                              const clubId = league.basicInfo?.clubId || league.clubId || '';
+                              const gameId = league.basicInfo?.gameId || league.gameId || '';
+                              const params = new URLSearchParams();
+                              params.set('leagueId', league.id);
+                              if (clubId) params.set('clubId', clubId);
+                              if (gameId) params.set('gameId', gameId);
+                              navigate(`/organization/leaguematchmanagement?${params.toString()}`);
                             }}
                             className={`px-3 py-2 bg-blue-600 text-white text-xs font-semibold rounded hover:bg-blue-700 transition flex items-center justify-center gap-2 ${league.status === 'active' ? 'flex-1' : 'w-full'}`}
                           >
@@ -1751,10 +1757,6 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
         if (result.success) {
           const divs = result.data || [];
           setDivisions(divs);
-          // Auto-select first division if available
-          if (divs.length > 0) {
-            setSelectedDivision(divs[0].id);
-          }
         }
       } catch (err) {
         console.warn('Failed to fetch divisions:', err?.message || err);
@@ -1834,6 +1836,10 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
   };
 
   const getSelectedDivisionId = () => (selectedDivision && divisions.length > 0 ? selectedDivision : null);
+  const selectedDivisionInfo = divisions.find(div => div.id === selectedDivision) || null;
+  const selectedDivisionPlayerCount = selectedDivisionInfo?.players?.length || 0;
+  const selectedDivisionIsFull = !!selectedDivisionInfo?.maxPlayers && selectedDivisionPlayerCount >= selectedDivisionInfo.maxPlayers;
+  const divisionsAreAvailable = divisions.length > 0;
 
   const savePlayerSettings = async () => {
     try {
@@ -1871,6 +1877,16 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
       return;
     }
 
+    if (divisionsAreAvailable && !selectedDivision) {
+      alert('Please select a division before adding players.');
+      return;
+    }
+
+    if (selectedDivisionIsFull) {
+      alert(`Division "${selectedDivisionInfo?.name || 'selected division'}" is full. Please choose another division.`);
+      return;
+    }
+
     // Validate player count against league requirements
     try {
       const playersRes = await getLeaguePlayers(leagueId);
@@ -1896,8 +1912,7 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
       setError(null);
 
       let successCount = 0;
-      // Allow assigning divisions at add-time even for late joiners if a division is selected.
-      // This supports the user's request to auto-assign the default division.
+      // Assign the explicitly selected division when one is chosen.
       const sendDivisionId = selectedDivision && divisions.length > 0 ? selectedDivision : null;
 
       for (const playerId of selectedPlayers) {
@@ -1951,6 +1966,16 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
       return;
     }
 
+    if (divisionsAreAvailable && !selectedDivision) {
+      alert('Please select a division before analyzing enrollment.');
+      return;
+    }
+
+    if (selectedDivisionIsFull) {
+      alert(`Division "${selectedDivisionInfo?.name || 'selected division'}" is full. Please choose another division.`);
+      return;
+    }
+
     try {
       setPreviewLoading(true);
       setError(null);
@@ -1977,6 +2002,16 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
 
   const handleConfirmPreviewEnrollment = async () => {
     if (!previewData?.canProceed) return;
+
+    if (divisionsAreAvailable && !selectedDivision) {
+      alert('Please select a division before confirming enrollment.');
+      return;
+    }
+
+    if (selectedDivisionIsFull) {
+      alert(`Division "${selectedDivisionInfo?.name || 'selected division'}" is full. Please choose another division.`);
+      return;
+    }
 
     try {
       setPreviewConfirming(true);
@@ -2126,31 +2161,38 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
                   Division Assignment for New Players
                 </h3>
 
-                {(() => {
-                  return playerSettings.lateJoin ? (
-                    <div className="text-sm text-gray-700">
-                      Late join is enabled, so new players will be added without a division. Use the <strong>Assign Division</strong> button on the league card to assign them and regenerate fixtures.
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-xs text-gray-500 mb-2">
-                        Choose a division to assign new players to. Leaving this blank will auto-assign them to the least-filled division.
-                      </p>
-                      <select
-                        value={selectedDivision || ''}
-                        onChange={(e) => setSelectedDivision(e.target.value)}
-                        className="w-full border border-purple-200 rounded-md p-2.5 bg-white text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      >
-                        <option value="">-- Auto-assign to least-filled division --</option>
-                        {divisions.map(div => (
-                          <option key={div.id} value={div.id}>
-                            {div.name} ({div.playerCount || 0} players)
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  );
-                })()}
+                <p className="text-xs text-gray-500 mb-2">
+                  Select a division first, then choose the player(s) to enroll into that division.
+                </p>
+
+                {divisions.every(div => div.maxPlayers && (div.players?.length || 0) >= div.maxPlayers) && (
+                  <div className="mb-3 p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold">
+                    All divisions are currently full. Increase division capacity or add a new division before enrolling more players.
+                  </div>
+                )}
+
+                <select
+                  value={selectedDivision || ''}
+                  onChange={(e) => setSelectedDivision(e.target.value || null)}
+                  className="w-full border border-purple-200 rounded-md p-2.5 bg-white text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="">-- Select a division --</option>
+                  {divisions.map(div => {
+                    const divisionPlayerCount = div.players?.length || 0;
+                    const isFull = !!div.maxPlayers && divisionPlayerCount >= div.maxPlayers;
+                    return (
+                      <option key={div.id} value={div.id} disabled={isFull}>
+                        {div.name} ({divisionPlayerCount}{div.maxPlayers ? `/${div.maxPlayers}` : ''} players){isFull ? ' - Full' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                {selectedDivisionInfo && (
+                  <div className={`mt-3 text-xs font-semibold rounded-md border p-3 ${selectedDivisionIsFull ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                    {selectedDivisionInfo.name}: {selectedDivisionPlayerCount}{selectedDivisionInfo.maxPlayers ? ` / ${selectedDivisionInfo.maxPlayers}` : ''} players
+                  </div>
+                )}
               </div>
             )}
 
@@ -2190,14 +2232,14 @@ const AddPlayersModal = ({ leagueId, league, onClose, onPlayersAdded }) => {
             <div className="flex gap-3">
               <button
                 onClick={handleAnalyzePreview}
-                disabled={previewLoading || selectedPlayers.length === 0}
+                disabled={previewLoading || selectedPlayers.length === 0 || (divisionsAreAvailable && !selectedDivision) || selectedDivisionIsFull}
                 className="flex-1 px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
               >
                 {previewLoading ? 'Analyzing...' : 'Analyze & Preview'}
               </button>
               <button
                 onClick={handleAddPlayers}
-                disabled={adding || selectedPlayers.length === 0}
+                disabled={adding || selectedPlayers.length === 0 || (divisionsAreAvailable && !selectedDivision) || selectedDivisionIsFull}
                 className="flex-1 px-4 py-3 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 disabled:opacity-50 transition"
               >
                 {adding ? 'Adding...' : 'Simple Enrollment'}
