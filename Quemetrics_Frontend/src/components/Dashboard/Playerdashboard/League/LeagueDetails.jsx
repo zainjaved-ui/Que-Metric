@@ -12,6 +12,7 @@ import { LeagueContext } from '../../../../contexts/LeagueContext';
 
 import {
     getFixturesForLeague,
+    getMatchResultDetails,
     transformFixturesToMatches
 } from '../../../../Services/leagueMatchesService';
 import { BookingContext } from '../../../../contexts/BookingContext';
@@ -367,6 +368,389 @@ const PlayerStandingsTable = ({ leagueId, standingsDisplay, league }) => {
 
 const Th = ({ label }) => <th className="px-3 py-3.5 text-center text-[8px] font-black text-[#BA995D]/70 uppercase tracking-widest border-b border-[#1c4566] whitespace-nowrap">{label}</th>;
 
+const safeParseJson = (value, fallback = null) => {
+    if (value == null) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return fallback;
+    }
+};
+
+const mergeDefinedObjects = (...sources) => {
+    const merged = {};
+
+    sources.forEach((source) => {
+        const parsed = safeParseJson(source, null);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return;
+
+        Object.entries(parsed).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                merged[key] = value;
+            }
+        });
+    });
+
+    return merged;
+};
+
+const normalizeFrameDetails = (matchDetail, fallbackMatch) => {
+    const result = mergeDefinedObjects(
+        fallbackMatch?.additionalData?.resultData,
+        fallbackMatch?.resultData,
+        fallbackMatch?.additionalData?.matchResult,
+        fallbackMatch?.matchResult,
+        matchDetail?.fixture?.resultData,
+        matchDetail?.fixture?.matchResult,
+        matchDetail?.result,
+        matchDetail?.matchResult
+    );
+
+    const candidate =
+        result.snookerFrameDetails ||
+        result.pookerFrameDetails ||
+        result.poolRackDetails ||
+        result.frameDetails ||
+        fallbackMatch?.frameDetails ||
+        fallbackMatch?.resultData?.snookerFrameDetails ||
+        fallbackMatch?.resultData?.pookerFrameDetails ||
+        fallbackMatch?.resultData?.poolRackDetails ||
+        fallbackMatch?.resultData?.frameDetails ||
+        fallbackMatch?.additionalData?.matchResult?.snookerFrameDetails ||
+        fallbackMatch?.additionalData?.matchResult?.pookerFrameDetails ||
+        fallbackMatch?.additionalData?.matchResult?.poolRackDetails ||
+        fallbackMatch?.additionalData?.matchResult?.frameDetails ||
+        fallbackMatch?.additionalData?.snookerFrameDetails ||
+        fallbackMatch?.additionalData?.pookerFrameDetails ||
+        fallbackMatch?.additionalData?.poolRackDetails ||
+        fallbackMatch?.additionalData?.frameDetails;
+
+    const parsed = safeParseJson(candidate, []);
+    return Array.isArray(parsed) ? parsed : [];
+};
+
+const deriveExtendedStats = (frameDetails, sport, player1Id, player2Id) => {
+    const normalizedSport = String(sport || '').toLowerCase();
+    const isPool = normalizedSport === 'pool';
+    const isPooker = normalizedSport === 'pooker';
+    const isSnooker = normalizedSport === 'snooker' || (!isPool && !isPooker);
+
+    const stats = {
+        highestBreak: 0,
+        player1BallsPotted: 0,
+        player2BallsPotted: 0,
+        player1SevenBallWins: 0,
+        player2SevenBallWins: 0,
+        player1BlackFinishes: 0,
+        player2BlackFinishes: 0,
+        player1WhitewashWins: 0,
+        player2WhitewashWins: 0,
+    };
+
+    frameDetails.forEach((frame) => {
+        const p1Break = Number(getFrameValue(frame, ['player1Break', 'player1HighestBreak', 'p1Break'])) || 0;
+        const p2Break = Number(getFrameValue(frame, ['player2Break', 'player2HighestBreak', 'p2Break'])) || 0;
+        const p1Balls = Number(getFrameValue(frame, ['player1BallsPotted', 'p1BallsPotted'])) || 0;
+        const p2Balls = Number(getFrameValue(frame, ['player2BallsPotted', 'p2BallsPotted'])) || 0;
+        const winnerId = frame?.winnerId || frame?.winner || null;
+        const winnerIdStr = winnerId == null ? null : String(winnerId);
+
+        stats.highestBreak = Math.max(stats.highestBreak, p1Break, p2Break);
+        stats.player1BallsPotted += p1Balls;
+        stats.player2BallsPotted += p2Balls;
+
+        if (frame?.isSevenBallWin) {
+            if (winnerIdStr && player1Id != null && winnerIdStr === String(player1Id)) {
+                stats.player1SevenBallWins += 1;
+            }
+            if (winnerIdStr && player2Id != null && winnerIdStr === String(player2Id)) {
+                stats.player2SevenBallWins += 1;
+            }
+        }
+
+        if (isPooker && frame?.isBlackFinish) {
+            if (winnerIdStr && player1Id != null && winnerIdStr === String(player1Id)) {
+                stats.player1BlackFinishes += 1;
+            }
+            if (winnerIdStr && player2Id != null && winnerIdStr === String(player2Id)) {
+                stats.player2BlackFinishes += 1;
+            }
+        }
+
+        if ((isSnooker || isPooker) && frame?.isWhitewash) {
+            if (winnerIdStr && player1Id != null && winnerIdStr === String(player1Id)) {
+                stats.player1WhitewashWins += 1;
+            }
+            if (winnerIdStr && player2Id != null && winnerIdStr === String(player2Id)) {
+                stats.player2WhitewashWins += 1;
+            }
+        }
+    });
+
+    return stats;
+};
+
+const getFrameValue = (frame, keys) => {
+    for (const key of keys) {
+        const value = frame?.[key];
+        if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return 0;
+};
+
+const formatMatchDate = (dateStr) => {
+    if (!dateStr || dateStr === 'TBA') return 'TBA';
+    const parsed = new Date(dateStr);
+    if (Number.isNaN(parsed.getTime())) return 'TBA';
+    return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const StatTile = ({ label, value, accent, visible }) => {
+    if (!visible) return null;
+    return (
+        <div className="rounded-2xl border border-gray-100 bg-[#FAFAFA] p-4">
+            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">{label}</p>
+            <p className={`mt-1 text-sm font-black uppercase tracking-tight ${accent}`}>{value}</p>
+        </div>
+    );
+};
+
+const FrameStat = ({ label, value, accent }) => {
+    return (
+        <div className="rounded-xl border border-gray-100 bg-white p-3 text-center">
+            <p className="truncate text-[7px] font-black uppercase tracking-widest text-gray-400">{label}</p>
+            <p className={`mt-1 text-lg font-black ${accent}`}>{value}</p>
+        </div>
+    );
+};
+
+const CompletedMatchDetailsModal = ({ isOpen, match, matchDetail, loading, error, onClose }) => {
+    if (!isOpen || !match) return null;
+
+    const detailFixture = matchDetail?.fixture || match;
+    const result = mergeDefinedObjects(
+        match.additionalData?.resultData,
+        match.additionalData?.matchResult,
+        match.resultData,
+        match.matchResult,
+        detailFixture?.resultData,
+        detailFixture?.matchResult,
+        matchDetail?.result,
+        matchDetail?.matchResult
+    );
+    const booking = detailFixture?.bookings?.[0] || result?.booking || match.additionalData?.bookings?.[0] || null;
+    const frameDetails = normalizeFrameDetails(matchDetail, match);
+    const sport = String(detailFixture?.league?.sport || match.sport || match.gameType || '').toLowerCase();
+    const isPool = sport === 'pool';
+    const isPooker = sport === 'pooker';
+    const isSnooker = sport === 'snooker' || (!isPool && !isPooker);
+
+    const derivedStats = deriveExtendedStats(
+        frameDetails,
+        sport,
+        detailFixture?.player1?.id || match.additionalData?.player1Id,
+        detailFixture?.player2?.id || match.additionalData?.player2Id
+    );
+
+    const highestBreak = result?.highestBreak ?? detailFixture?.highestBreak ?? match.highestBreak ?? derivedStats.highestBreak ?? 0;
+    const player1BallsPotted = result?.player1BallsPotted ?? detailFixture?.player1BallsPotted ?? match.player1BallsPotted ?? derivedStats.player1BallsPotted ?? 0;
+    const player2BallsPotted = result?.player2BallsPotted ?? detailFixture?.player2BallsPotted ?? match.player2BallsPotted ?? derivedStats.player2BallsPotted ?? 0;
+    const player1SevenBallWins = result?.player1SevenBallWins ?? detailFixture?.player1SevenBallWins ?? match.player1SevenBallWins ?? derivedStats.player1SevenBallWins ?? 0;
+    const player2SevenBallWins = result?.player2SevenBallWins ?? detailFixture?.player2SevenBallWins ?? match.player2SevenBallWins ?? derivedStats.player2SevenBallWins ?? 0;
+    const player1BlackFinishes = result?.player1BlackFinishes ?? detailFixture?.player1BlackFinishes ?? match.player1BlackFinishes ?? derivedStats.player1BlackFinishes ?? 0;
+    const player2BlackFinishes = result?.player2BlackFinishes ?? detailFixture?.player2BlackFinishes ?? match.player2BlackFinishes ?? derivedStats.player2BlackFinishes ?? 0;
+    const player1WhitewashWins = result?.player1WhitewashWins ?? detailFixture?.player1WhitewashWins ?? match.player1WhitewashWins ?? derivedStats.player1WhitewashWins ?? 0;
+    const player2WhitewashWins = result?.player2WhitewashWins ?? detailFixture?.player2WhitewashWins ?? match.player2WhitewashWins ?? derivedStats.player2WhitewashWins ?? 0;
+
+    const player1Name = detailFixture?.player1?.name || match.homeTeam || 'Player 1';
+    const player2Name = detailFixture?.player2?.name || match.awayTeam || 'Player 2';
+    const displayScore = match.score || detailFixture?.score || `${detailFixture?.player1Frames ?? detailFixture?.player1RackWins ?? 0}-${detailFixture?.player2Frames ?? detailFixture?.player2RackWins ?? 0}`;
+    const venueName = booking?.venue?.venueName || booking?.venue?.name || match.venueName || match.tableName || 'TBA';
+    const tableName = booking?.tableName || (booking?.tableNumber ? `Table ${booking.tableNumber}` : match.tableName || 'TBA');
+    const resultStatus = result?.resultStatus || detailFixture?.detailedStatus || match.detailedStatus || match.status;
+    const frameLabel = isPool ? 'Rack' : 'Frame';
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 py-6"
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ scale: 0.96, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.96, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className="w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-[2rem] bg-white shadow-2xl border border-[#FDF2D1]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between bg-[#132F45] px-5 sm:px-6 py-4">
+                    <div>
+                        <p className="text-[8px] font-black uppercase tracking-[0.25em] text-[#BA995D]">Completed Match Details</p>
+                        <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight text-white">{player1Name} vs {player2Name}</h3>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white transition hover:bg-white hover:text-[#132F45]"
+                    >
+                        Close
+                    </button>
+                </div>
+
+                <div className="max-h-[calc(92vh-72px)] overflow-y-auto p-5 sm:p-6 space-y-5">
+                    {loading ? (
+                        <div className="py-20 text-center">
+                            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[#132F45]/10 border-t-[#BA995D]" />
+                            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#132F45]">Loading match data...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-center text-red-700">
+                            <FaExclamationTriangle className="mx-auto mb-2 text-xl" />
+                            <p className="text-[10px] font-black uppercase tracking-widest">{error}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="grid gap-3 md:grid-cols-4">
+                                <div className="rounded-2xl border border-gray-50 bg-[#FAFAFA] p-4">
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Status</p>
+                                    <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{resultStatus}</p>
+                                </div>
+                                <div className="rounded-2xl border border-gray-50 bg-[#FAFAFA] p-4">
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Score</p>
+                                    <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{displayScore}</p>
+                                </div>
+                                <div className="rounded-2xl border border-gray-50 bg-[#FAFAFA] p-4">
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Venue</p>
+                                    <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{venueName}</p>
+                                </div>
+                                <div className="rounded-2xl border border-gray-50 bg-[#FAFAFA] p-4">
+                                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Table</p>
+                                    <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{tableName}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3 lg:grid-cols-[1.25fr_0.95fr]">
+                                <div className="rounded-[1.75rem] border border-gray-50 bg-white p-5 shadow-xl shadow-[#132F45]/5 outline outline-1 outline-[#FDF2D1]">
+                                    <div className="flex items-center justify-between gap-4 border-b border-gray-50 pb-4">
+                                        <div>
+                                            <p className="text-[8px] font-black uppercase tracking-[0.25em] text-gray-400">Booking Information</p>
+                                            <h4 className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{booking?.bookingDate ? formatMatchDate(booking.bookingDate) : formatMatchDate(detailFixture?.date || match.date)}</h4>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[8px] font-black uppercase tracking-[0.25em] text-gray-400">Time</p>
+                                            <h4 className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{booking?.startTime || detailFixture?.startTime || match.startTime || 'TBA'}</h4>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                        <div className="rounded-2xl bg-[#FAFAFA] p-4">
+                                            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Player 1</p>
+                                            <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{player1Name}</p>
+                                        </div>
+                                        <div className="rounded-2xl bg-[#FAFAFA] p-4">
+                                            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Player 2</p>
+                                            <p className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">{player2Name}</p>
+                                        </div>
+                                    </div>
+
+                                    {(result?.notes || result?.imageUrl) && (
+                                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                            {result?.notes && (
+                                                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:col-span-2">
+                                                    <p className="text-[8px] font-black uppercase tracking-[0.25em] text-blue-500">Notes</p>
+                                                    <p className="mt-2 text-xs font-medium leading-relaxed text-[#132F45]">{result.notes}</p>
+                                                </div>
+                                            )}
+                                            {result?.imageUrl && (
+                                                <a
+                                                    href={result.imageUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#BA995D]/20 bg-[#FDF2D1] px-4 py-3 text-[9px] font-black uppercase tracking-widest text-[#132F45] transition hover:bg-[#BA995D] hover:text-white"
+                                                >
+                                                    <FaImage /> View Proof
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-[1.75rem] border border-gray-50 bg-white p-5 shadow-xl shadow-[#132F45]/5 outline outline-1 outline-[#FDF2D1]">
+                                    <p className="text-[8px] font-black uppercase tracking-[0.25em] text-gray-400">Match Stats</p>
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                        <StatTile label="Highest Break" value={highestBreak || 0} accent="text-blue-600" visible={isSnooker || isPooker} />
+                                        <StatTile label="Balls Potted" value={`${player1BallsPotted} / ${player2BallsPotted}`} accent="text-purple-600" visible={isPool || isPooker} />
+                                        <StatTile label="7-Ball Wins" value={`${player1SevenBallWins} / ${player2SevenBallWins}`} accent="text-yellow-600" visible={isPool || isPooker} />
+                                        <StatTile label="Black Finishes" value={`${player1BlackFinishes} / ${player2BlackFinishes}`} accent="text-gray-800" visible={isPooker} />
+                                        <StatTile label="Whitewash Wins" value={`${player1WhitewashWins} / ${player2WhitewashWins}`} accent="text-indigo-600" visible={isSnooker || isPooker} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-[1.75rem] border border-gray-50 bg-white p-5 shadow-xl shadow-[#132F45]/5 outline outline-1 outline-[#FDF2D1]">
+                                <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-4">
+                                    <div>
+                                        <p className="text-[8px] font-black uppercase tracking-[0.25em] text-gray-400">{isPool ? 'Rack-by-Rack' : 'Frame-by-Frame'}</p>
+                                        <h4 className="mt-1 text-sm font-black uppercase tracking-tight text-[#132F45]">Detailed Breakdown</h4>
+                                    </div>
+                                    <span className="rounded-full bg-[#FDF2D1] px-3 py-1 text-[8px] font-black uppercase tracking-widest text-[#132F45]">{frameDetails.length} entries</span>
+                                </div>
+
+                                {frameDetails.length > 0 ? (
+                                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                        {frameDetails.map((frame, index) => {
+                                            const p1Score = Number(getFrameValue(frame, ['player1Score', 'player1Frames', 'player1RackWins', 'score1', 'p1Score'])) || 0;
+                                            const p2Score = Number(getFrameValue(frame, ['player2Score', 'player2Frames', 'player2RackWins', 'score2', 'p2Score'])) || 0;
+                                            const p1Break = Number(getFrameValue(frame, ['player1Break', 'player1HighestBreak', 'p1Break'])) || 0;
+                                            const p2Break = Number(getFrameValue(frame, ['player2Break', 'player2HighestBreak', 'p2Break'])) || 0;
+                                            const p1Balls = Number(getFrameValue(frame, ['player1BallsPotted', 'p1BallsPotted'])) || 0;
+                                            const p2Balls = Number(getFrameValue(frame, ['player2BallsPotted', 'p2BallsPotted'])) || 0;
+                                            const winnerId = frame.winnerId || frame.winner || null;
+                                            const frameNumber = frame.frameNumber || frame.rackNumber || frame.round || index + 1;
+                                            const winnerLabel = winnerId
+                                                ? String(winnerId) === String(detailFixture?.player1?.id || match.additionalData?.player1Id) || p1Score > p2Score
+                                                    ? player1Name
+                                                    : String(winnerId) === String(detailFixture?.player2?.id || match.additionalData?.player2Id) || p2Score > p1Score
+                                                        ? player2Name
+                                                        : 'Decided'
+                                                : (p1Score > p2Score ? player1Name : p2Score > p1Score ? player2Name : 'Draw');
+
+                                            return (
+                                                <div key={`${frameNumber}-${index}`} className="rounded-2xl border border-gray-100 bg-[#FAFAFA] p-4 shadow-sm">
+                                                    <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                                                        <span className="text-[8px] font-black uppercase tracking-widest text-[#BA995D]">{frameLabel} {String(frameNumber).padStart(2, '0')}</span>
+                                                        <span className="text-[8px] font-black uppercase tracking-widest text-[#132F45]">{winnerLabel}</span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <FrameStat label={player1Name} value={p1Score} accent="text-[#132F45]" />
+                                                        <FrameStat label={player2Name} value={p2Score} accent="text-[#BA995D]" />
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2 text-[8px] font-black uppercase tracking-widest text-gray-500">
+                                                        <div className="rounded-xl bg-white px-3 py-2">Break: {p1Break} / {p2Break}</div>
+                                                        <div className="rounded-xl bg-white px-3 py-2">Balls: {p1Balls} / {p2Balls}</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 rounded-2xl border border-dashed border-gray-200 bg-[#FAFAFA] p-8 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                        No frame-by-frame data was recorded for this match.
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+            </motion.div>
+        </motion.div>
+    );
+};
+
 
 
 
@@ -456,6 +840,55 @@ export default function LeagueDetails({ leagueId, onBack, initialLeague }) {
     const [fixturesLoading, setFixturesLoading] = useState(false);
     const [fixtureError, setFixtureError] = useState(null);
     const [activeTab, setActiveTab] = useState('stats'); // 'stats', 'fixtures', 'results'
+    const [selectedMatch, setSelectedMatch] = useState(null);
+    const [selectedMatchDetails, setSelectedMatchDetails] = useState(null);
+    const [matchDetailsLoading, setMatchDetailsLoading] = useState(false);
+    const [matchDetailsError, setMatchDetailsError] = useState(null);
+
+    const closeMatchDetails = useCallback(() => {
+        setSelectedMatch(null);
+        setSelectedMatchDetails(null);
+        setMatchDetailsLoading(false);
+        setMatchDetailsError(null);
+    }, []);
+
+    const openMatchDetails = useCallback(async (match) => {
+        if (!match || match.status !== 'completed') return;
+
+        setSelectedMatch(match);
+        setSelectedMatchDetails(null);
+        setMatchDetailsError(null);
+        setMatchDetailsLoading(true);
+
+        try {
+            const fixtureId = match.fixtureId || match.id;
+            const [fixtureResponse, completedResultsResponse] = await Promise.allSettled([
+                getMatchResultDetails(leagueId, fixtureId),
+                matchResultService.getCompletedResults(),
+            ]);
+
+            const fixtureDetail = fixtureResponse.status === 'fulfilled' ? fixtureResponse.value : null;
+            const completedResults = completedResultsResponse.status === 'fulfilled'
+                ? (completedResultsResponse.value?.data || [])
+                : [];
+
+            const completedResult = completedResults.find((result) => {
+                return String(result.fixtureId) === String(fixtureId) || (
+                    fixtureDetail?.bookings?.[0]?.id && String(result.bookingId) === String(fixtureDetail.bookings[0].id)
+                );
+            }) || null;
+
+            setSelectedMatchDetails({
+                fixture: fixtureDetail || null,
+                result: completedResult,
+            });
+        } catch (err) {
+            console.error('Failed to load completed match details:', err);
+            setMatchDetailsError('Could not load full match details.');
+        } finally {
+            setMatchDetailsLoading(false);
+        }
+    }, [leagueId]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -740,6 +1173,7 @@ export default function LeagueDetails({ leagueId, onBack, initialLeague }) {
                                                     league={league}
                                                     isMyMatch={isUserMatch}
                                                     isLateEnrollmentMatch={isLateEnrollmentMatch}
+                                                    onOpenDetails={openMatchDetails}
                                                 />
                                             );
                                         })}
@@ -787,7 +1221,7 @@ export default function LeagueDetails({ leagueId, onBack, initialLeague }) {
                                         return (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                                 {completedMatches.map(match => (
-                                                    <MatchCard key={match.id} match={match} league={league} isMyMatch />
+                                                            <MatchCard key={match.id} match={match} league={league} isMyMatch onOpenDetails={openMatchDetails} />
                                                 ))}
                                             </div>
                                         );
@@ -802,12 +1236,25 @@ export default function LeagueDetails({ leagueId, onBack, initialLeague }) {
                     </motion.div>
                 </AnimatePresence>
             </div>
+
+            <AnimatePresence>
+                {selectedMatch && (
+                    <CompletedMatchDetailsModal
+                        isOpen={!!selectedMatch}
+                        match={selectedMatch}
+                        matchDetail={selectedMatchDetails}
+                        loading={matchDetailsLoading}
+                        error={matchDetailsError}
+                        onClose={closeMatchDetails}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
 
 // --- Sub-component: Match Card (Adapted) ---
-const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
+const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch, onOpenDetails }) => {
     const statusColors = {
         upcoming: 'bg-blue-50 text-blue-700 border-blue-100',
         ongoing: 'bg-[#FDF2D1] text-[#BA995D] border-[#BA995D]/20',
@@ -834,6 +1281,17 @@ const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
 
     const p1Score = match.score?.split('-')[0] || 0;
     const p2Score = match.score?.split('-')[1] || 0;
+    const isCompleted = match.status === 'completed';
+    const booking = match.additionalData?.bookings?.[0] || null;
+    const isBooked = booking?.status === 'confirmed';
+    const isByeMatch = match.status === 'bye' || match.detailedStatus === 'BYE';
+    const isWalkoverMatch =
+        match.detailedStatus === 'FORFEIT' ||
+        match.isWalkover === true ||
+        match.matchResult?.isWalkover === true ||
+        match.additionalData?.resultData?.isWalkover === true ||
+        !!match.additionalData?.resultData?.walkoverScore;
+    const canAddResult = isMyMatch && !isCompleted && isBooked && !isByeMatch && !isWalkoverMatch;
 
     const formatDateDisplay = (dateStr) => {
         if (!dateStr || dateStr === 'TBA') return 'TBA';
@@ -845,8 +1303,8 @@ const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
         }
     };
 
-    return (
-        <Card className={`p-3 border rounded-xl transition-all flex flex-col gap-2.5 group hover:-translate-y-0.5 duration-500 outline outline-1 outline-[#FDF2D1] ${getCardStyling()}`}>
+    const cardContent = (
+        <Card className={`p-3 border rounded-xl transition-all flex flex-col gap-2.5 group hover:-translate-y-0.5 duration-500 outline outline-1 outline-[#FDF2D1] ${getCardStyling()} ${isCompleted ? 'cursor-pointer' : ''}`}>
             <div className="flex justify-between items-start gap-2">
                 <div className="flex flex-wrap gap-1">
                     <span className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase tracking-wider border ${statusColors[match.status] || 'bg-gray-50'}`}>
@@ -860,6 +1318,11 @@ const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
                     {isMyMatch && (
                         <span className="px-2 py-0.5 rounded-lg text-[7px] font-black text-[#BA995D] bg-[#132F45] uppercase tracking-wider shadow-lg shadow-[#132F45]/20">
                             My Match
+                        </span>
+                    )}
+                    {isCompleted && (
+                        <span className="px-2 py-0.5 rounded-lg text-[7px] font-black text-[#132F45] bg-[#FDF2D1] uppercase tracking-wider shadow-sm">
+                            View Details
                         </span>
                     )}
                 </div>
@@ -916,7 +1379,7 @@ const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
                 </div>
             </div>
 
-            {isMyMatch && match.status !== 'completed' && (
+            {canAddResult && (
                 <div className="flex flex-col gap-2 pt-3">
                     <button
                         className="w-full py-2 bg-[#132F45] text-white rounded-lg text-[9px] font-black uppercase tracking-wider hover:bg-[#1c4566] transition-all shadow-lg shadow-[#132F45]/20 flex items-center justify-center gap-2"
@@ -936,6 +1399,16 @@ const MatchCard = ({ match, league, isMyMatch, isLateEnrollmentMatch }) => {
             )}
         </Card>
     );
+
+    if (isCompleted) {
+        return (
+            <button type="button" onClick={() => onOpenDetails?.(match)} className="w-full text-left">
+                {cardContent}
+            </button>
+        );
+    }
+
+    return cardContent;
 };
 
 // --- Sub-component: Booking Mini Card ---

@@ -58,9 +58,15 @@ const WinRateBar = ({ rate, label = 'Overall Win Rate' }) => (
 // ─── Stats Panel (Overall / Season) ──────────────────────────────────────────
 const StatsPanel = ({ title, badge, stats, leagueNames, extra }) => {
   if (!stats) return null;
-  const excludedLeague = (stats.leagueWalkovers || 0) + (stats.leagueByes || 0);
+  const leagueWalkoverWins = stats.leagueWalkoverWins ?? stats.walkoverWins ?? 0;
+  const leagueWalkoverLosses = stats.leagueWalkoverLosses ?? stats.walkoverLosses ?? 0;
+  const leagueWalkoverMatches = stats.leagueWalkoverMatches ?? stats.leagueWalkovers ?? (leagueWalkoverWins + leagueWalkoverLosses);
+  const overallWalkoverWins = stats.walkoverWins ?? leagueWalkoverWins ?? 0;
+  const overallWalkoverLosses = stats.walkoverLosses ?? leagueWalkoverLosses ?? 0;
+  const overallWalkoverMatches = stats.walkoverMatches ?? stats.walkovers ?? (overallWalkoverWins + overallWalkoverLosses);
+  const excludedLeague = leagueWalkoverMatches + (stats.leagueByes || 0);
   const tournamentPlayed = stats.tournamentMatches || ((stats.tournamentWins || 0) + (stats.tournamentLosses || 0));
-  const excludedOverall = (stats.walkoverExcluded || stats.walkovers || 0) + (stats.byeExcluded || 0);
+  const excludedOverall = (stats.walkoverExcluded || overallWalkoverMatches || 0) + (stats.byeExcluded || 0);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -88,6 +94,18 @@ const StatsPanel = ({ title, badge, stats, leagueNames, extra }) => {
             <span>·</span>
             <span>{stats.leagueLosses || 0} Losses</span>
           </div>
+          {(leagueWalkoverWins > 0 || leagueWalkoverLosses > 0 || leagueWalkoverMatches > 0) && (
+            <div className="space-y-0.5 text-[7px] font-black uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-gray-500">
+                <span>Walkovers</span>
+                <span className="text-[#132F45]">{leagueWalkoverMatches} Played</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-green-600">{leagueWalkoverWins}W</span>
+                <span className="text-red-500">{leagueWalkoverLosses}L</span>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <span className="text-[11px] font-black text-green-600">{stats.leagueWins || 0}W</span>
             <span className="text-[11px] font-black text-red-500">{stats.leagueLosses || 0}L</span>
@@ -97,7 +115,7 @@ const StatsPanel = ({ title, badge, stats, leagueNames, extra }) => {
         {/* Right: All Results */}
         <div>
           <p className="text-[7.5px] font-black text-gray-400 uppercase tracking-widest mb-2">Competitive Results</p>
-          <p className="text-[7px] font-bold text-gray-400 mb-1.5">Bye and walkover results are excluded</p>
+          <p className="text-[7px] font-bold text-gray-400 mb-1.5">Bye results are excluded; walkovers are shown separately</p>
           <div className="flex items-baseline gap-1.5 mb-1">
             <span className="text-3xl font-black text-[#132F45]">{stats.totalMatches || 0}</span>
             <span className="text-[8px] font-bold text-gray-400">MATCHES</span>
@@ -118,6 +136,12 @@ const StatsPanel = ({ title, badge, stats, leagueNames, extra }) => {
               <div className="flex justify-between text-[7.5px] font-bold text-gray-500">
                 <span>League</span>
                 <span className="font-black text-[#132F45]">{stats.leagueWins || 0}W {stats.leagueLosses || 0}L</span>
+              </div>
+            )}
+            {(overallWalkoverWins > 0 || overallWalkoverLosses > 0 || overallWalkoverMatches > 0) && (
+              <div className="flex justify-between text-[7.5px] font-bold text-gray-500">
+                <span>Walkovers</span>
+                <span className="font-black text-[#132F45]">{overallWalkoverWins}W {overallWalkoverLosses}L</span>
               </div>
             )}
             {tournamentPlayed > 0 && (
