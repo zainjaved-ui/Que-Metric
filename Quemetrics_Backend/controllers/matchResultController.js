@@ -2197,7 +2197,7 @@ exports.submitMatchResult = async (req, res) => {
         // For Snooker knockout matches, require explicit tie-break winner
         const sport = booking.sport ? String(booking.sport).toLowerCase() : 'snooker';
         const isPoolOrPooker = sport === 'pool' || sport === 'pooker';
-        
+
         if (!isPoolOrPooker || !isKnockoutFormat) {
           // For non-knockout or snooker knockout, enforce tie-break requirement
           await transaction.rollback();
@@ -2467,7 +2467,7 @@ exports.submitMatchResult = async (req, res) => {
       }
 
       // Automatic knockout advancement for Straight Knockout leagues
-      const { advanceKnockoutWinner } = require('../services/fixtureGenerator');
+      const { advanceKnockoutWinner, checkLeagueCompletion } = require('../services/fixtureGenerator');
       const isKnockout = (booking.league?.format === 'knockout' || booking.league?.format === 'double_elimination' || booking.league?.format === 'groupsKnockout');
       // Also check if fixture has knockout stage
       const fixture = await Fixture.findByPk(booking.fixtureId);
@@ -2478,6 +2478,11 @@ exports.submitMatchResult = async (req, res) => {
           console.error(`[submitMatchResult] Knockout advancement error:`, err.message);
         });
       }
+
+      // Check if this finalizes the entire league
+      checkLeagueCompletion(booking.leagueId).catch(err => {
+        console.error(`[submitMatchResult] checkLeagueCompletion error:`, err.message);
+      });
     }
 
     // Fetch complete result with associations
@@ -2798,7 +2803,7 @@ exports.confirmMatchResult = async (req, res) => {
         }
 
         // Automatic knockout advancement for Straight Knockout leagues (when confirmed by opponent)
-        const { advanceKnockoutWinner } = require('../services/fixtureGenerator');
+        const { advanceKnockoutWinner, checkLeagueCompletion } = require('../services/fixtureGenerator');
         const isKnockout = (matchResult.league?.format === 'knockout' || matchResult.league?.format === 'double_elimination' || matchResult.league?.format === 'groupsKnockout');
         const isKnockoutStage = fixture?.stage === 'knockout' || fixture?.stage === 'groupsKnockout';
         if ((isKnockout || isKnockoutStage) && matchResult.winnerId && matchResult.fixtureId) {
@@ -2807,6 +2812,11 @@ exports.confirmMatchResult = async (req, res) => {
             console.error(`[confirmMatchResult] Knockout advancement error:`, err.message);
           });
         }
+
+        // Check if this finalizes the entire league
+        checkLeagueCompletion(matchResult.leagueId).catch(err => {
+          console.error(`[confirmMatchResult] checkLeagueCompletion error:`, err.message);
+        });
       }
 
       const message = requiresAdminApproval
