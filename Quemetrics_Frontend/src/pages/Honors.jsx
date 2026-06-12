@@ -25,20 +25,20 @@ const normalizeList = (value) => {
   return [];
 };
 
-const sportOrder = ['all', 'snooker', 'pool', 'poker'];
+const sportOrder = ['all', 'snooker', 'pool', 'pooker'];
 
 const sportLabelMap = {
   all: 'All Sports',
   snooker: 'Snooker',
   pool: 'Pool',
-  poker: 'Poker',
-  pooker: 'Poker',
+  pooker: 'Pooker',
+  pooker: 'Pooker',
 };
 
 const sportIconMap = {
   snooker: FaBullseye,
   pool: FaCircle,
-  poker: FaDice,
+  pooker: FaDice,
   pooker: FaDice,
 };
 
