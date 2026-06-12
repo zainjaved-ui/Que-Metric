@@ -2971,7 +2971,13 @@ const LeagueCreationWizard = ({ initialData, onSaveDraft, onComplete, onClose, o
     }
 
     playerItems.forEach((item, idx) => {
-      const divisionIndex = idx % count;
+      let divisionIndex;
+      if (method === 'skill') {
+        const playersPerDiv = Math.ceil(playerItems.length / count);
+        divisionIndex = Math.min(Math.floor(idx / playersPerDiv), count - 1);
+      } else {
+        divisionIndex = idx % count;
+      }
       assignments[divisionIndex].push(item.id);
     });
 
@@ -4037,7 +4043,18 @@ const LeagueCreationWizard = ({ initialData, onSaveDraft, onComplete, onClose, o
                       if (formData.structure.knockout.byeSelection === 'manual' || formData.structure.knockout.byeSelection === 'random') {
                         isBye = (formData.structure.knockout.manualByes || []).includes(pid);
                       } else if (formData.structure.knockout.byeSelection === 'ranked') {
-                        isBye = i >= leaguePlayers.length - byeCount;
+                        const sortedIds = [...leaguePlayers]
+                          .sort((a, b) => {
+                            const rA = parseFloat(a.player?.ranking || a.ranking || 0);
+                            const rB = parseFloat(b.player?.ranking || b.ranking || 0);
+                            if (rA !== rB) return rA - rB;
+                            const idA = (a.playerId || a.player?.id || '').toString();
+                            const idB = (b.playerId || b.player?.id || '').toString();
+                            return idA > idB ? 1 : (idA < idB ? -1 : 0);
+                          })
+                          .map(lp => lp.playerId || lp.player?.id);
+                        const bypassIds = sortedIds.slice(0, byeCount);
+                        isBye = bypassIds.includes(pid);
                       }
 
                       return (

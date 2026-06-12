@@ -732,7 +732,13 @@ function DisputeModal({ isOpen, onClose, result, claimedScore, setClaimedScore, 
             const mergedScore = {
               ...claimedScore,
               ...(isSnooker ? { player1Frames: computedP1Total, player2Frames: computedP2Total }
-                : isPooker ? { player1Frames: computedP1Total, player2Frames: computedP2Total }
+                : isPooker ? { 
+                    player1Frames: computedP1Total, 
+                    player2Frames: computedP2Total,
+                    // Also set rackWins for pooker games (display consistency)
+                    player1RackWins: computedP1Total,
+                    player2RackWins: computedP2Total
+                  }
                   : { player1RackWins: computedP1Total, player2RackWins: computedP2Total }),
               winnerId: computedWinner,
             };

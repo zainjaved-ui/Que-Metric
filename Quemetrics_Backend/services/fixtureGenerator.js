@@ -306,14 +306,17 @@ async function generateKnockoutFixtures(league, structure, divisions) {
   // rankingSource: 'global' (enrollment rank) | 'league_table' (current league points)
   const knockoutRankingSource = knockoutConfig.rankingSource || 'global';
 
-  // If user explicitly chose random or manual for byes, respect it.
-  // Otherwise, if seeded, default to ranked_top byes.
-  const byeType = (byeSelection === 'manual' || byeSelection === 'random') ? byeSelection :
-    (isSeeded ? 'ranked_top' : (structure.matchRules?.byeType || knockoutConfig.byeType || 'random'));
+  // If user explicitly chose a bye selection method, respect it.
+  // Otherwise, default to ranked_top (highest) if seeded, or random if not.
+  const byeType = (byeSelection === 'manual' || byeSelection === 'random' || byeSelection === 'ranked')
+    ? byeSelection
+    : (isSeeded ? 'ranked_top' : (structure.matchRules?.byeType || knockoutConfig.byeType || 'random'));
 
   const leaguePlayerMap = new Map();
   (league.leaguePlayers || []).forEach(lp => {
-    leaguePlayerMap.set(lp.playerId, { ...lp, _seedRank: resolveSeedRank(lp.playerId, new Map([[lp.playerId, lp]]), knockoutRankingSource) });
+    let lpObj = lp;
+    if (typeof lp.get === 'function') lpObj = lp.get({ plain: true });
+    leaguePlayerMap.set(lpObj.playerId, { ...lpObj, _seedRank: resolveSeedRank(lpObj.playerId, new Map([[lpObj.playerId, lpObj]]), knockoutRankingSource) });
   });
 
   const processDivision = (playerIds, divId) => {
@@ -324,11 +327,14 @@ async function generateKnockoutFixtures(league, structure, divisions) {
     const bracketSize = Math.pow(2, Math.ceil(Math.log2(numPlayers)));
     const numByes = bracketSize - numPlayers;
 
-    // 2. Prepare players with ranking
-    const participants = playerIds.map(id => ({
-      id,
-      ranking: leaguePlayerMap.get(id)?.ranking || 0,
-    }));
+    // 2. Prepare players with ranking (ensure we check lp.player.ranking)
+    const participants = playerIds.map(id => {
+      const lpMatch = leaguePlayerMap.get(id);
+      return {
+        id,
+        ranking: lpMatch?.player?.ranking || lpMatch?.ranking || 0,
+      };
+    });
 
     // 3. Determine Bye Recipients based on selection method
     const byeRecipients = selectByeRecipients(participants, byeType, numByes, manualByes);
@@ -339,7 +345,14 @@ async function generateKnockoutFixtures(league, structure, divisions) {
     const nonByePlayers = participants.filter(p => !byeRecipients.includes(p.id));
 
     // Sort bye players by rank (highest first to take the very top seeds)
-    const sortedByePlayers = byePlayers.sort((a, b) => (b.ranking || 0) - (a.ranking || 0));
+    const sortedByePlayers = byePlayers.sort((a, b) => {
+      const rA = parseFloat(a.ranking || 0);
+      const rB = parseFloat(b.ranking || 0);
+      if (rA !== rB) return rB - rA;
+      const idA = (a.id || '').toString();
+      const idB = (b.id || '').toString();
+      return idA > idB ? 1 : (idA < idB ? -1 : 0);
+    });
 
     // Seed the remaining non-bye players based on user preference (Ranked/Random/Manual)
     const sortedNonByePlayers = seedPlayers(nonByePlayers, seedingMethod === 'random' ? 'random' : (isSeeded ? 'ranked' : seedingMethod), false, manualOrder);
@@ -1105,13 +1118,13 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
   // Resolve Draw automatically for Knockout stages if no winner is set
   if (!effectiveWinnerId && currentFixture.player1Id && currentFixture.player2Id) {
     console.log(`[advanceKnockoutWinner] Match ${fixtureId} is a draw. Applying tie-breakers for progression.`);
-    
+
     const { MatchResult, League } = require('../models');
-    
+
     // Get league to determine sport
     const league = await League.findByPk(currentFixture.leagueId);
     const sport = league?.sport ? String(league.sport).toLowerCase() : 'snooker';
-    
+
     const allResults = await MatchResult.findAll({
       where: {
         leagueId: currentFixture.leagueId,
@@ -1243,7 +1256,7 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
   } else {
     // No target fixture in the next round - this was the Final!
     const league = await League.findByPk(currentFixture.leagueId);
-    
+
     // The effectiveWinnerId is already resolved via tie-breakers if it was a draw
     const championId = effectiveWinnerId;
     const runnerUpId = (championId === currentFixture.player1Id) ? currentFixture.player2Id : currentFixture.player1Id;
@@ -1259,7 +1272,7 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
 
       // Award titles in LeaguePlayer record
       const { LeaguePlayer } = require('../models');
-      
+
       // Update Champion
       const lpChampion = await LeaguePlayer.findOne({
         where: { leagueId: currentFixture.leagueId, playerId: championId }
@@ -1388,14 +1401,28 @@ function selectByeRecipients(participants, byeType = 'random', count = 0, manual
     case 'ranked':
     case 'lowest_ranked':
       selectedIds = [...participants]
-        .sort((a, b) => (a.ranking || 0) - (b.ranking || 0))
+        .sort((a, b) => {
+          const rA = parseFloat(a.ranking || 0);
+          const rB = parseFloat(b.ranking || 0);
+          if (rA !== rB) return rA - rB;
+          const idA = (a.id || '').toString();
+          const idB = (b.id || '').toString();
+          return idA > idB ? 1 : (idA < idB ? -1 : 0);
+        })
         .map(p => p.id.toString());
       break;
 
     case 'highest_ranked':
     case 'ranked_top':
       selectedIds = [...participants]
-        .sort((a, b) => (b.ranking || 0) - (a.ranking || 0))
+        .sort((a, b) => {
+          const rA = parseFloat(a.ranking || 0);
+          const rB = parseFloat(b.ranking || 0);
+          if (rA !== rB) return rB - rA;
+          const idA = (a.id || '').toString();
+          const idB = (b.id || '').toString();
+          return idA > idB ? 1 : (idA < idB ? -1 : 0);
+        })
         .map(p => p.id.toString());
       break;
 
@@ -1449,7 +1476,14 @@ function seedPlayers(players, seedingMethod = 'random', protection = false, manu
   switch (seedingMethod) {
     case 'ranking':
     case 'ranked':
-      sortedPlayers = [...players].sort((a, b) => (b.ranking || 0) - (a.ranking || 0));
+      sortedPlayers = [...players].sort((a, b) => {
+        const rA = parseFloat(a.ranking || 0);
+        const rB = parseFloat(b.ranking || 0);
+        if (rA !== rB) return rB - rA;
+        const idA = (a.id || '').toString();
+        const idB = (b.id || '').toString();
+        return idA > idB ? 1 : (idA < idB ? -1 : 0);
+      });
       break;
 
     case 'manual':
@@ -1525,18 +1559,18 @@ async function generateFixturesForLeague(leagueId, divisionId = null, options = 
     include: [
       {
         association: 'divisions',
-        include: [{ 
-          association: 'players', 
+        include: [{
+          association: 'players',
           where: { approvalStatus: 'approved' },
           required: false,
-          include: [{ association: 'player', attributes: ['id'] }] 
+          include: [{ association: 'player', attributes: ['id', 'ranking'] }]
         }]
       },
-      { 
-        association: 'leaguePlayers', 
+      {
+        association: 'leaguePlayers',
         where: { approvalStatus: 'approved' },
         required: false, // Don't fail if no players are approved yet
-        include: [{ association: 'player', attributes: ['id'] }] 
+        include: [{ association: 'player', attributes: ['id', 'ranking'] }]
       }
     ]
   });
@@ -1585,10 +1619,10 @@ async function generateFixturesForLeague(leagueId, divisionId = null, options = 
     // To avoid duplicates (like seen in user feedback), we remove old 'scheduled' or 'bye' 
     // matches that have NO bookings and NO results yet.
     const { MatchResult, Booking } = require('../models');
-    
+
     // Find fixtures we can safely remove
     const safeToRemove = await Fixture.findAll({
-      where: { 
+      where: {
         leagueId,
         status: { [Op.in]: ['scheduled', 'bye'] }
       },
@@ -1782,10 +1816,12 @@ async function generateFixturesForLeague(leagueId, divisionId = null, options = 
 async function checkLeagueCompletion(leagueId) {
   try {
     // Lazy load models to avoid circular dependencies if any
-    const { Fixture, League } = require('../models');
+    const { Fixture, League, LeaguePlayer } = require('../models');
     const { Op } = require('sequelize');
 
-    const league = await League.findByPk(leagueId);
+    const league = await League.findByPk(leagueId, {
+      include: [{ association: 'divisions' }]
+    });
     if (!league || league.status !== 'active') return;
 
     // Count fixtures that are still pending (not completed/bye/cancelled)
@@ -1800,9 +1836,88 @@ async function checkLeagueCompletion(leagueId) {
 
     console.log(`[checkLeagueCompletion] League ${leagueId} pending fixture count: ${remainingCount}`);
 
-    if (remainingCount === 0) {
+    let isFinished = false;
+
+    let structure = {};
+    if (typeof league.structure === 'string') {
+      try { structure = JSON.parse(league.structure || '{}'); } catch (e) { }
+    } else if (league.structure) {
+      structure = league.structure;
+    }
+    const format = structure.format || league.format;
+    const isDouble = format === 'homeAway' || (structure.roundRobin && structure.roundRobin.isDouble);
+
+    if (format === 'roundRobin' || format === 'homeAway') {
+      // Calculate EXPECTED fixture count for round robin formats
+      let expectedCompletedCount = 0;
+      const divisions = league.divisions || [];
+
+      if (divisions.length > 0) {
+        for (const div of divisions) {
+          const count = await LeaguePlayer.count({ where: { leagueId, divisionId: div.id, approvalStatus: { [OpInner.in]: ['approved', 'withdrawn'] } } });
+          if (count > 1) {
+            const evenCount = count + (count % 2);
+            const rounds = evenCount - 1;
+            const fixturesPerRound = evenCount / 2;
+            expectedCompletedCount += (fixturesPerRound * rounds) * (isDouble ? 2 : 1);
+          }
+        }
+      } else {
+        const count = await LeaguePlayer.count({ where: { leagueId, approvalStatus: { [OpInner.in]: ['approved', 'withdrawn'] } } });
+        if (count > 1) {
+          const evenCount = count + (count % 2);
+          const rounds = evenCount - 1;
+          const fixturesPerRound = evenCount / 2;
+          expectedCompletedCount += (fixturesPerRound * rounds) * (isDouble ? 2 : 1);
+        }
+      }
+
+      const completedCount = await Fixture.count({
+        where: {
+          leagueId,
+          status: { [OpInner.in]: ['completed', 'bye', 'walkover'] },
+          stage: { [OpInner.or]: ['group', 'round_robin', 'roundRobin', 'homeAway', null] }
+        }
+      });
+
+      console.log(`[checkLeagueCompletion] Format: ${format} (double: ${isDouble}). Expected: ${expectedCompletedCount}, Completed: ${completedCount}`);
+
+      // Only complete if we have generated and completed ALL expected matches, and none are pending
+      if (completedCount >= expectedCompletedCount && expectedCompletedCount > 0 && remainingCount === 0) {
+        // Wait! Are there knockout stages pending?
+        const knockoutPending = await Fixture.count({
+          where: { leagueId, stage: { [OpInner.in]: ['knockout', 'groupsKnockout'] }, status: { [OpInner.notIn]: ['completed', 'bye', 'walkover', 'cancelled'] } }
+        });
+        if (knockoutPending === 0) {
+          isFinished = true;
+        }
+      }
+    } else {
+      // For other formats (swiss, pure knockout), fallback to remainingCount === 0 logic
+      // Ensure there's at least some completed matches to avoid completing empty leagues
+      const completedCount = await Fixture.count({
+        where: { leagueId, status: { [OpInner.in]: ['completed', 'bye', 'walkover'] } }
+      });
+      if (remainingCount === 0 && completedCount > 0) {
+        isFinished = true;
+      }
+    }
+
+    if (isFinished) {
       await league.update({ status: 'completed' });
       console.log(`[checkLeagueCompletion] All fixtures completed. Marking league ${leagueId} as completed.`);
+
+      // Auto-trigger full finalization logic (promotions, relegations, crowns)
+      try {
+        const { finalizeLeagueInternally } = require('../controllers/leagueController');
+        if (typeof finalizeLeagueInternally === 'function') {
+          console.log(`[checkLeagueCompletion] Initiating automatic finalization for league ${leagueId}...`);
+          await finalizeLeagueInternally(leagueId);
+        }
+      } catch (finalizeErr) {
+        console.warn(`[checkLeagueCompletion] Auto-finalization error for league ${leagueId}:`, finalizeErr.message);
+      }
+
       return true; // Marked as completed
     }
   } catch (error) {
@@ -1824,7 +1939,7 @@ async function seedGroupKnockoutQualifiers(leagueId) {
 
   const structure = typeof league.structure === 'string' ? JSON.parse(league.structure) : league.structure;
   const format = structure?.format || league.format;
-  
+
   const isGK = format === 'groupsKnockout';
   const isRR = format === 'roundRobin' || format === 'homeAway';
   const isSwiss = format === 'swiss';
@@ -1833,10 +1948,10 @@ async function seedGroupKnockoutQualifiers(leagueId) {
     throw new Error(`Knockout seeding not supported for league format: ${format}`);
   }
 
-  const qualifiersPerGroup = isGK 
+  const qualifiersPerGroup = isGK
     ? parseInt(structure.groups?.qualifiers || 0, 10)
     : parseInt(structure.knockout?.qualifiers || structure.qualifiers || 4, 10);
-    
+
   if (qualifiersPerGroup < 1) throw new Error("Invalid qualifiers per group/league");
 
   // Verify no pending qualifying matches (group stage, round robin, or swiss)
@@ -1913,10 +2028,10 @@ async function seedGroupKnockoutQualifiers(leagueId) {
   console.log(`[seedGroupKnockoutQualifiers] Total qualifiers after filtering withdrawn: ${totalQualifiers} (was expected: ${isGK ? (divisions.length * qualifiersPerGroup) : qualifiersPerGroup})`);
 
   let round1Fixtures = await Fixture.findAll({
-    where: { 
-      leagueId, 
-      stage: isGK ? 'groupsKnockout' : 'knockout', 
-      round: 1 
+    where: {
+      leagueId,
+      stage: isGK ? 'groupsKnockout' : 'knockout',
+      round: 1
     },
     order: [['matchIndex', 'ASC']]
   });
@@ -1925,14 +2040,14 @@ async function seedGroupKnockoutQualifiers(leagueId) {
   if (round1Fixtures.length === 0) {
     console.log(`[seedGroupKnockoutQualifiers] No explicit knockout fixtures found. Searching for empty-stage placeholders...`);
     round1Fixtures = await Fixture.findAll({
-      where: { 
-        leagueId, 
-        stage: { [require('sequelize').Op.or]: ['', null] }, 
-        round: 1 
+      where: {
+        leagueId,
+        stage: { [require('sequelize').Op.or]: ['', null] },
+        round: 1
       },
       order: [['matchIndex', 'ASC']]
     });
-    
+
     if (round1Fixtures.length > 0) {
       console.log(`[seedGroupKnockoutQualifiers] Found ${round1Fixtures.length} empty-stage placeholders. Repairing labels...`);
       const targetStage = isGK ? 'groupsKnockout' : 'knockout';
@@ -1946,22 +2061,22 @@ async function seedGroupKnockoutQualifiers(leagueId) {
 
   if (round1Fixtures.length === 0) {
     if (isGK) throw new Error("No knockout fixtures generated yet!");
-    
+
     // For RR/Swiss, if no bracket exists, we create one now based on totalQualifiers
     console.log(`[seedGroupKnockoutQualifiers] Creating new knockout bracket for ${format} league ${leagueId} with ${totalQualifiers} qualifiers`);
     const bracketFixtures = createKnockoutBracket(leagueId, totalQualifiers, 'knockout');
-    
+
     // Save these fixtures to DB
     for (const f of bracketFixtures) {
       await Fixture.create(f);
     }
-    
+
     // Reload round 1
     round1Fixtures = await Fixture.findAll({
-      where: { 
-        leagueId, 
-        stage: isGK ? 'groupsKnockout' : 'knockout', 
-        round: 1 
+      where: {
+        leagueId,
+        stage: isGK ? 'groupsKnockout' : 'knockout',
+        round: 1
       },
       order: [['matchIndex', 'ASC']]
     });
@@ -2005,7 +2120,7 @@ async function seedGroupKnockoutQualifiers(leagueId) {
     const newStatus = (!player1 && !player2) ? 'scheduled' :
       (player1 && player2) ? 'scheduled' : 'bye';
 
-    console.log(`[seedGroupKnockoutQualifiers] Seeding match ${m+1} (fixtures.id=${fixture.id}): Seed#${p1SeedNum}=${player1} vs Seed#${p2SeedNum}=${player2} → status=${newStatus}`);
+    console.log(`[seedGroupKnockoutQualifiers] Seeding match ${m + 1} (fixtures.id=${fixture.id}): Seed#${p1SeedNum}=${player1} vs Seed#${p2SeedNum}=${player2} → status=${newStatus}`);
 
     await fixture.update({
       player1Id: player1,
