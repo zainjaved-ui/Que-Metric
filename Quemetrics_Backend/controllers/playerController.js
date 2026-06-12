@@ -192,7 +192,11 @@ exports.updateProfile = async (req, res) => {
     // 2. IDENTITY CHANGES (name / DOB) - queue for admin approval
     const normalizedName = typeof updateData.name === "string" ? updateData.name.trim() : null;
     const hasNameChange = normalizedName && normalizedName !== player.name;
-    const hasDobChange = updateData.hasOwnProperty("dateOfBirth") && updateData.dateOfBirth !== player.dateOfBirth;
+    const currentDob = player.dateOfBirth ? new Date(player.dateOfBirth).toISOString().split('T')[0] : '';
+    const requestedDob = updateData.hasOwnProperty("dateOfBirth") && updateData.dateOfBirth
+      ? new Date(updateData.dateOfBirth).toISOString().split('T')[0]
+      : '';
+    const hasDobChange = updateData.hasOwnProperty("dateOfBirth") && requestedDob !== currentDob;
     const identityChangeReason = (updateData.identityChangeReason || updateData.nameChangeReason || "").trim();
 
     if (hasNameChange || hasDobChange) {
@@ -683,6 +687,7 @@ exports.getFilteredStats = async (req, res) => {
   try {
     const { userId } = req.user;
     const { leagueFilter = 'both', game = 'all' } = req.query;
+    const normalizedGame = String(game || 'all').toLowerCase();
     const startTime = Date.now();
 
     const player = await resolvePlayerProfile(userId, [
@@ -722,10 +727,10 @@ exports.getFilteredStats = async (req, res) => {
 
     // ========== Filter by game ==========
     let filtered = allParticipations;
-    if (game !== 'all') {
+    if (normalizedGame !== 'all') {
       filtered = allParticipations.filter(p => {
         const sport = (p.type === 'league' ? p.data.league?.sport : p.data.tournament?.sport || '').toLowerCase();
-        return sport === game || (game === 'pooker' && sport === 'poker');
+        return sport === normalizedGame || (normalizedGame === 'pooker' && sport === 'poker');
       });
     }
 
@@ -740,7 +745,7 @@ exports.getFilteredStats = async (req, res) => {
           },
           leagues: [],
           tournaments: [],
-          filter: { leagueFilter, game },
+          filter: { leagueFilter, game: normalizedGame },
           excludedNote: "Bye and walkover matches are excluded from all stats"
         },
         timing: { queryTime: Date.now() - startTime }
@@ -1252,6 +1257,8 @@ exports.getDashboardStats = async (req, res) => {
           let sWhitewashLosses = 0;
           let sHighestBreak = 0;
           let sStandingPoints = 0;
+          let sWalkoverWins = 0;
+          let sWalkoverLosses = 0;
           let sExcludedWalkovers = 0;
           let sExcludedByes = 0;
 
@@ -1309,6 +1316,20 @@ exports.getDashboardStats = async (req, res) => {
               const isBye = isByeLikeResult(r);
 
               if (shouldExcludeResultFromStats(r)) {
+                if (r.isWalkover) {
+                  sExcludedWalkovers += 1;
+                  if (won) sWalkoverWins += 1;
+                  else if (lost) sWalkoverLosses += 1;
+                  if (isLeagueResult) sLeagueWalkovers += 1;
+                  if (isTournamentResult) sTournamentWalkovers += 1;
+                }
+
+                if (isBye) {
+                  sExcludedByes += 1;
+                  if (isLeagueResult) sLeagueByes += 1;
+                  if (isTournamentResult) sTournamentByes += 1;
+                }
+
                 continue;
               }
 
@@ -1396,6 +1417,8 @@ exports.getDashboardStats = async (req, res) => {
               totalWins: sWins,
               totalLosses: sLosses,
               walkovers: sExcludedWalkovers,
+              walkoverWins: sWalkoverWins,
+              walkoverLosses: sWalkoverLosses,
               byeExcluded: sExcludedByes,
               walkoverExcluded: sExcludedWalkovers,
               framesWon: sFramesWon,
