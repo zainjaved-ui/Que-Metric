@@ -547,9 +547,15 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
         });
 
         // If we found actual frames, use those as the initial official resolution
+        // For all sports, frame/rack details are authoritative when available
         if (p1Count > 0 || p2Count > 0) {
           initialP1Total = p1Count;
           initialP2Total = p2Count;
+        } else if (subDetails.length > 0) {
+          // Edge case: frame details exist but all frames are draws
+          // Keep the summary score if available
+          initialP1Total = p1Frames || p1Racks || 0;
+          initialP2Total = p2Frames || p2Racks || 0;
         }
       }
 
@@ -571,9 +577,15 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
         });
 
         // Use calculated counts from claimed details if available
+        // For all sports, if we have frame details, the count is authoritative
         if (p1Count > 0 || p2Count > 0) {
           claimedP1Total = p1Count;
           claimedP2Total = p2Count;
+        } else if (claimDetails.length > 0) {
+          // Edge case: frame details exist but all frames are draws (s1 === s2)
+          // In this case, use the originally claimed frame/rack counts as fallback
+          claimedP1Total = (isSnooker || isPooker) ? p1ClaimFrames : p1ClaimRacks;
+          claimedP2Total = (isSnooker || isPooker) ? p2ClaimFrames : p2ClaimRacks;
         }
       }
 
@@ -789,9 +801,16 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
                       const s2 = parseInt(f.player2Score) || 0;
                       if (String(f.winnerId) === String(p1Id) || s1 > s2) p1Count++;
                     });
-                    return p1Count || (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
+                    // Return calculated count if available, otherwise fallback to stored frames/racks
+                    if (p1Count > 0) {
+                      return p1Count;
+                    }
                   }
-                  return (isSnooker || isPooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
+                  // Fallback: For pooker, check both frames and rackWins; for snooker use frames; for pool use rackWins
+                  if (isPooker) {
+                    return (dispute.claimedPlayer1Frames ?? dispute.claimedPlayer1RackWins ?? 0);
+                  }
+                  return (isSnooker ? dispute.claimedPlayer1Frames : dispute.claimedPlayer1RackWins) || 0;
                 })()}</div>
               </div>
               <div className="text-gray-300 font-black text-lg">:</div>
@@ -808,9 +827,16 @@ function ResolveModal({ dispute, isOpen, onClose, onResolve, loading }) {
                       const s2 = parseInt(f.player2Score) || 0;
                       if (String(f.winnerId) === String(p2Id) || s2 > s1) p2Count++;
                     });
-                    return p2Count || (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
+                    // Return calculated count if available, otherwise fallback to stored frames/racks
+                    if (p2Count > 0) {
+                      return p2Count;
+                    }
                   }
-                  return (isSnooker || isPooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
+                  // Fallback: For pooker, check both frames and rackWins; for snooker use frames; for pool use rackWins
+                  if (isPooker) {
+                    return (dispute.claimedPlayer2Frames ?? dispute.claimedPlayer2RackWins ?? 0);
+                  }
+                  return (isSnooker ? dispute.claimedPlayer2Frames : dispute.claimedPlayer2RackWins) || 0;
                 })()}</div>
               </div>
             </div>
