@@ -2103,7 +2103,10 @@ exports.startLeague = async (req, res) => {
 
         // Find existing divisions
         const { Division } = require("../models");
-        let divisions = await Division.findAll({ where: { leagueId: league.id } });
+        let divisions = await Division.findAll({
+          where: { leagueId: league.id },
+          order: [['createdAt', 'ASC']]
+        });
 
         // If no divisions exist, create them automatically
         if (divisions.length === 0) {
@@ -2144,32 +2147,40 @@ exports.startLeague = async (req, res) => {
         });
 
         if (leaguePlayers.length > 0 && divisions.length > 0) {
-          console.log(`Assigning ${leaguePlayers.length} players to ${divisions.length} divisions using ${assignmentMethod} method`);
+          console.log(`Assigning ${leaguePlayers.length} players to ${divisions.length} divisions using frontend assigned array or ${assignmentMethod} method`);
 
-          if (assignmentMethod === 'skill') {
-            const sortedPlayers = [...leaguePlayers].sort((a, b) => {
-              const rA = a.ranking || 0;
-              const rB = b.ranking || 0;
-              return rB - rA;
-            });
-            for (let i = 0; i < sortedPlayers.length; i++) {
-              const divIdx = i % divisions.length;
-              await sortedPlayers[i].update({ divisionId: divisions[divIdx].id });
-            }
-          } else if (assignmentMethod === 'manual' && (divSettings.assignedPlayers || groupsConfig.assignedPlayers)) {
-            const manualAssignedList = isGroupsKnockout ? groupsConfig.assignedPlayers : divSettings.assignedPlayers;
+          const manualAssignedList = isGroupsKnockout ? (groupsConfig.assignedPlayers || divSettings.assignedPlayers) : divSettings.assignedPlayers;
+          let hasAssignedPlayers = false;
+          if (manualAssignedList && Array.isArray(manualAssignedList) && manualAssignedList.some(arr => arr && arr.length > 0)) {
+            hasAssignedPlayers = true;
+          }
+
+          if (hasAssignedPlayers) {
+            console.log(`[startLeague] Using frontend-generated division assignments to ensure exact match with UI.`);
             const { Op } = require('sequelize');
             for (let di = 0; di < divisions.length; di++) {
               const assignedIds = manualAssignedList[di] || [];
               if (assignedIds.length > 0) {
+                // Ensure IDs are mapped correctly
                 const ids = assignedIds.map(id => typeof id === 'object' ? (id.id || id.playerId) : id).filter(Boolean);
                 if (ids.length > 0) {
                   await LeaguePlayer.update(
-                    { divisionId: divisions[di].id, manuallyAssigned: true },
+                    { divisionId: divisions[di].id, manuallyAssigned: assignmentMethod === 'manual' },
                     { where: { leagueId: league.id, playerId: { [Op.in]: ids } } }
                   );
                 }
               }
+            }
+          } else if (assignmentMethod === 'skill') {
+            const sortedPlayers = [...leaguePlayers].sort((a, b) => {
+              const rA = a.player?.ranking || a.ranking || 0;
+              const rB = b.player?.ranking || b.ranking || 0;
+              return rB - rA;
+            });
+            const playersPerDiv = Math.ceil(sortedPlayers.length / divisions.length);
+            for (let i = 0; i < sortedPlayers.length; i++) {
+              const divIdx = Math.min(Math.floor(i / playersPerDiv), divisions.length - 1);
+              await sortedPlayers[i].update({ divisionId: divisions[divIdx].id });
             }
           } else {
             // Default Auto assignment
@@ -3016,7 +3027,10 @@ exports.activateWizardLeague = async (req, res) => {
           : (divSettings.assignmentMethod || 'auto');
 
         // Find existing divisions
-        let divisions = await Division.findAll({ where: { leagueId: league.id } });
+        let divisions = await Division.findAll({
+          where: { leagueId: league.id },
+          order: [['createdAt', 'ASC']]
+        });
 
         // If no divisions exist, create them automatically
         if (divisions.length === 0) {
@@ -3057,39 +3071,45 @@ exports.activateWizardLeague = async (req, res) => {
         });
 
         if (leaguePlayers.length > 0 && divisions.length > 0) {
-          console.log(`Assigning ${leaguePlayers.length} players to ${divisions.length} divisions using ${assignmentMethod} method`);
+          console.log(`Assigning ${leaguePlayers.length} players to ${divisions.length} divisions using frontend assigned array or ${assignmentMethod} method`);
 
-          if (assignmentMethod === 'skill') {
-            // Sort players by ranking DESC (assuming higher ranking/rating is better)
-            const sortedPlayers = [...leaguePlayers].sort((a, b) => {
-              const rA = a.ranking || 0;
-              const rB = b.ranking || 0;
-              return rB - rA;
-            });
+          const manualAssignedList = isGroupsKnockout ? (groupsConfig.assignedPlayers || divSettings.assignedPlayers) : divSettings.assignedPlayers;
+          let hasAssignedPlayers = false;
+          if (manualAssignedList && Array.isArray(manualAssignedList) && manualAssignedList.some(arr => arr && arr.length > 0)) {
+            hasAssignedPlayers = true;
+          }
 
-            // Distribute into divisions
-            for (let i = 0; i < sortedPlayers.length; i++) {
-              const divIdx = i % divisions.length;
-              await sortedPlayers[i].update({ divisionId: divisions[divIdx].id });
-            }
-          } else if (assignmentMethod === 'manual' && (divSettings.assignedPlayers || groupsConfig.assignedPlayers)) {
-            // Respect manual assignments from wizard structure object
-            const manualAssignedList = isGroupsKnockout ? groupsConfig.assignedPlayers : divSettings.assignedPlayers;
+          if (hasAssignedPlayers) {
+            console.log(`[activateWizardLeague] Using frontend-generated division assignments to ensure exact match with UI.`);
             for (let di = 0; di < divisions.length; di++) {
               const assignedIds = manualAssignedList[di] || [];
               if (assignedIds.length > 0) {
-                // Ensure IDs are mapped correctly (could be player info or just IDs)
+                // Ensure IDs are mapped correctly
                 const ids = assignedIds.map(id => typeof id === 'object' ? (id.id || id.playerId) : id).filter(Boolean);
                 if (ids.length > 0) {
                   await LeaguePlayer.update(
-                    { divisionId: divisions[di].id, manuallyAssigned: true },
+                    { divisionId: divisions[di].id, manuallyAssigned: assignmentMethod === 'manual' },
                     { where: { leagueId: league.id, playerId: { [Op.in]: ids } } }
                   );
                 }
               }
             }
+          } else if (assignmentMethod === 'skill') {
+            // Fallback backward-compatibility if frontend array is missing
+            const sortedPlayers = [...leaguePlayers].sort((a, b) => {
+              const rA = a.player?.ranking || a.ranking || 0;
+              const rB = b.player?.ranking || b.ranking || 0;
+              return rB - rA;
+            });
+
+            // Distribute into divisions in chunks
+            const playersPerDiv = Math.ceil(sortedPlayers.length / divisions.length);
+            for (let i = 0; i < sortedPlayers.length; i++) {
+              const divIdx = Math.min(Math.floor(i / playersPerDiv), divisions.length - 1);
+              await sortedPlayers[i].update({ divisionId: divisions[divIdx].id });
+            }
           } else {
-            // Default: Auto / Round-robin distribution
+            // Fallback for auto/random
             for (let i = 0; i < leaguePlayers.length; i++) {
               const divIdx = i % divisions.length;
               await leaguePlayers[i].update({ divisionId: divisions[divIdx].id });
@@ -3508,6 +3528,59 @@ exports.getLeagueStandings = async (req, res) => {
   }
 };
 
+exports.finalizeLeagueInternally = async (leagueId) => {
+  const { League, Division } = require('../models');
+  const league = await League.findByPk(leagueId);
+  if (!league || league.status === "cancelled") return { moves: [] };
+
+  // 1. Update standings one last time so they are accurate
+  await standingsService.updateLeagueStandings(leagueId);
+
+  // 2. Apply promotion/relegation
+  const { processPromotionRelegation } = require('../services/divisionService');
+  const { moves } = await processPromotionRelegation(leagueId);
+
+  // 3. Mark league as completed
+  await league.update({ status: "completed" });
+
+  // 4. Crown Champions for each division (Only for standings-based formats)
+  try {
+    const divisions = await Division.findAll({ where: { leagueId } });
+
+    const structure = typeof league.structure === 'string' ? JSON.parse(league.structure || '{}') : (league.structure || {});
+    const format = structure.format || league.format;
+    const isTournamentFormat = ['knockout', 'groupsKnockout'].includes(format);
+
+    if (!isTournamentFormat) {
+      if (divisions.length > 0) {
+        for (const div of divisions) {
+          const sorted = await standingsService.getSortedStandings(leagueId, div.id);
+          if (sorted && sorted.length > 0) {
+            await sorted[0].update({ title: 'Champion' });
+            if (sorted.length > 1) await sorted[1].update({ title: 'Runner-up' });
+          }
+        }
+      } else {
+        // No divisions, crown overall champion
+        const sorted = await standingsService.getSortedStandings(leagueId);
+        if (sorted && sorted.length > 0) {
+          await sorted[0].update({ title: 'Champion' });
+          if (sorted.length > 1) await sorted[1].update({ title: 'Runner-up' });
+        }
+      }
+    } else {
+      console.log(`[finalizeLeagueInternally] Skipping automatic title assignment for tournament format: ${format}`);
+    }
+  } catch (crownErr) {
+    console.warn(`[finalizeLeagueInternally] Failed to assign titles:`, crownErr.message);
+  }
+
+  await clearLeagueCache(leagueId);
+
+  console.log(`[finalizeLeagueInternally] League ${leagueId} finalized with ${moves.length} player moves.`);
+  return { moves };
+};
+
 /**
  * Finalize a league: set status to "completed", finalize standings, then
  * apply promotion/relegation between divisions.
@@ -3535,52 +3608,8 @@ exports.finalizeLeague = async (req, res) => {
       return res.status(400).json({ success: false, error: "Cannot finalize a cancelled league" });
     }
 
-    // 1. Update standings one last time so they are accurate
-    await standingsService.updateLeagueStandings(leagueId);
-
-    // 2. Apply promotion/relegation
-    const { processPromotionRelegation } = require('../services/divisionService');
-    const { moves } = await processPromotionRelegation(leagueId);
-
-    // 3. Mark league as completed
-    await league.update({ status: "completed" });
-
-    // 4. Crown Champions for each division (Only for standings-based formats)
-    try {
-      const { Division } = require('../models');
-      const divisions = await Division.findAll({ where: { leagueId } });
-
-      const structure = typeof league.structure === 'string' ? JSON.parse(league.structure || '{}') : (league.structure || {});
-      const format = structure.format || league.format;
-      const isTournamentFormat = ['knockout', 'groupsKnockout'].includes(format);
-
-      if (!isTournamentFormat) {
-        if (divisions.length > 0) {
-          for (const div of divisions) {
-            const sorted = await standingsService.getSortedStandings(leagueId, div.id);
-            if (sorted && sorted.length > 0) {
-              await sorted[0].update({ title: 'Champion' });
-              if (sorted.length > 1) await sorted[1].update({ title: 'Runner-up' });
-            }
-          }
-        } else {
-          // No divisions, crown overall champion
-          const sorted = await standingsService.getSortedStandings(leagueId);
-          if (sorted && sorted.length > 0) {
-            await sorted[0].update({ title: 'Champion' });
-            if (sorted.length > 1) await sorted[1].update({ title: 'Runner-up' });
-          }
-        }
-      } else {
-        console.log(`[finalizeLeague] Skipping automatic title assignment for tournament format: ${format}`);
-      }
-    } catch (crownErr) {
-      console.warn(`[finalizeLeague] Failed to assign titles:`, crownErr.message);
-    }
-
-    await clearLeagueCache(leagueId);
-
-    console.log(`[finalizeLeague] League ${leagueId} finalized with ${moves.length} player moves.`);
+    const result = await exports.finalizeLeagueInternally(leagueId) || { moves: [] };
+    const moves = result.moves || [];
 
     res.json({
       success: true,
@@ -3737,11 +3766,11 @@ exports.overrideStandings = async (req, res) => {
     console.log(`[OVERRIDE DEBUG] Reloading leaguePlayer from DB...`);
     await leaguePlayer.reload();
     console.log(`[OVERRIDE DEBUG] After reload - manualPointsAdjustment: ${leaguePlayer.manualPointsAdjustment}`);
-    
+
     const prevManualAdjustment = (leaguePlayer.manualPointsAdjustment || 0);
     console.log(`[OVERRIDE DEBUG] Previous Manual Adjustment (from DB): ${prevManualAdjustment}`);
     console.log(`[OVERRIDE DEBUG] Incoming points adjustment: ${pointsAdjustment}`);
-    
+
     const newManualAdjustment = prevManualAdjustment + pointsAdjustment;
     console.log(`[OVERRIDE DEBUG] Calculated new manual adjustment: ${prevManualAdjustment} + ${pointsAdjustment} = ${newManualAdjustment}`);
 
@@ -3762,7 +3791,7 @@ exports.overrideStandings = async (req, res) => {
     // Reload the player to get the freshly computed points from the recalculation
     await leaguePlayer.reload();
     const newPoints = leaguePlayer.points;
-    
+
     console.log(`[OVERRIDE DEBUG] After recalculation - DB values:`, {
       manualPointsAdjustment: leaguePlayer.manualPointsAdjustment,
       points: leaguePlayer.points
@@ -3854,7 +3883,7 @@ exports.leaveLeague = async (req, res) => {
     if (league.status === 'active') {
       // If active, we should probably mark as withdrawn rather than deleting
       await enrollment.update({ status: 'withdrawn' });
-      
+
       // CRITICAL: Process withdrawn player's knockout matches to create byes
       const { Fixture } = require("../models");
       const knockoutMatches = await Fixture.findAll({
@@ -3876,8 +3905,8 @@ exports.leaveLeague = async (req, res) => {
         if (!opponentId) {
           // No opponent in this match yet, just clear the withdrawn player
           console.log(`[leaveLeague] Match ${match.id}: withdrawn player ${player.id} is solo, no opponent to advance`);
-          await match.update({ 
-            [isP1 ? 'player1Id' : 'player2Id']: null 
+          await match.update({
+            [isP1 ? 'player1Id' : 'player2Id']: null
           });
           continue;
         }
