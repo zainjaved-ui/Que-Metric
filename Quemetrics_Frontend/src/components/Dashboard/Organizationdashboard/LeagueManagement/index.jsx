@@ -474,7 +474,7 @@ const LeagueManagement = () => {
                 { id: 'all', label: 'All Leagues' },
                 { id: 'snooker', label: 'Snooker' },
                 { id: 'pool', label: 'Pool' },
-                { id: 'poker', label: 'Poker' }
+                { id: 'pooker', label: 'Pooker' }
               ].map(game => {
                 const isActive = selectedGameFilter === game.id;
                 const count = game.id === 'all'
@@ -4854,10 +4854,10 @@ const LeagueCreationWizard = ({ initialData, onSaveDraft, onComplete, onClose, o
                     <span className="text-gray-500">Venues</span>
                     <div className="flex flex-wrap gap-1">
                       {formData.basicInfo.venueIds.length > 0 ? formData.basicInfo.venueIds.map(v => {
-                        // Extract venue name from composite ID if needed
-                        let displayVenueName = v;
-                        if (v && typeof v === 'string' && v.includes(':')) {
-                          displayVenueName = v.split(':')[1];
+                        let displayVenueName = v && typeof v === 'string' && v.includes(':') ? v.split(':')[1] : v;
+                        const foundVenue = allVenuesWithApproval?.find(av => av.id === v);
+                        if (foundVenue && foundVenue.name) {
+                          displayVenueName = foundVenue.name;
                         }
                         return (
                           <span key={v} className="px-2 py-0.5 bg-gray-100 rounded text-[11px] border">{displayVenueName}</span>

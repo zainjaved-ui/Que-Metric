@@ -847,7 +847,7 @@ exports.joinLeague = async (req, res) => {
             // Fetch all players including the new one
             const allLeaguePlayers = await LeaguePlayer.findAll({
               where: { leagueId },
-              include: [{ association: 'player', attributes: ['id', 'name', 'nickname', 'ranking'] }]
+              include: [{ association: 'player', attributes: ['id', 'name', 'nickname'] }]
             });
 
             console.log(`Auto-assigning late joining player using ${assignmentMethod} method after player joined`);
