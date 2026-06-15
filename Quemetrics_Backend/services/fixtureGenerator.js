@@ -202,11 +202,11 @@ async function generateRoundRobinFixtures(league, structure, divisions) {
 
   if (structure.divisions?.enabled && divisions.length > 0) {
     for (const division of divisions) {
-      const playerIds = (division.players || []).map(p => p.player && p.player.id).filter(id => !!id);
+      const playerIds = [...new Set((division.players || []).map(p => p.player && p.player.id).filter(id => !!id))];
       processPlayerList(playerIds, division.id);
     }
   } else {
-    const allPlayers = (league.leaguePlayers || []).map(lp => lp.player && lp.player.id).filter(id => !!id);
+    const allPlayers = [...new Set((league.leaguePlayers || []).map(lp => lp.player && lp.player.id).filter(id => !!id))];
     processPlayerList(allPlayers, null);
   }
 
@@ -1333,7 +1333,7 @@ async function injectLateJoiner(leagueId, playerId, divisionId = null) {
   });
 
   const existingKeys = new Set(
-    existingFixtures.map(f => `${f.round}:${f.divisionId || 'null'}:${f.player1Id || 'null'}:${f.player2Id || 'null'}`)
+    existingFixtures.map(f => `${f.divisionId || 'null'}:${f.player1Id || 'null'}:${f.player2Id || 'null'}`)
   );
 
   let generatedFixtures = [];
@@ -1349,13 +1349,12 @@ async function injectLateJoiner(leagueId, playerId, divisionId = null) {
 
   const isDouble = format === 'homeAway' || (structure.roundRobin && structure.roundRobin.isDouble);
   const fixturesToCreate = generatedFixtures
-    .filter(fixture => fixture.round > currentRound)
     .filter(fixture => {
-      const directKey = `${fixture.round}:${fixture.divisionId || 'null'}:${fixture.player1Id || 'null'}:${fixture.player2Id || 'null'}`;
+      const directKey = `${fixture.divisionId || 'null'}:${fixture.player1Id || 'null'}:${fixture.player2Id || 'null'}`;
       if (existingKeys.has(directKey)) return false;
 
       if (!isDouble) {
-        const reverseKey = `${fixture.round}:${fixture.divisionId || 'null'}:${fixture.player2Id || 'null'}:${fixture.player1Id || 'null'}`;
+        const reverseKey = `${fixture.divisionId || 'null'}:${fixture.player2Id || 'null'}:${fixture.player1Id || 'null'}`;
         if (existingKeys.has(reverseKey)) return false;
       }
 
@@ -1563,14 +1562,14 @@ async function generateFixturesForLeague(leagueId, divisionId = null, options = 
           association: 'players',
           where: { approvalStatus: 'approved' },
           required: false,
-          include: [{ association: 'player', attributes: ['id', 'ranking'] }]
+          include: [{ association: 'player', attributes: ['id'] }]
         }]
       },
       {
         association: 'leaguePlayers',
         where: { approvalStatus: 'approved' },
         required: false, // Don't fail if no players are approved yet
-        include: [{ association: 'player', attributes: ['id', 'ranking'] }]
+        include: [{ association: 'player', attributes: ['id'] }]
       }
     ]
   });

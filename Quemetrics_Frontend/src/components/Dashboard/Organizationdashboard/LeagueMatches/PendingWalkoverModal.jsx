@@ -155,11 +155,11 @@ export default function PendingWalkoverModal({ walkover, onClose, onUpdate }) {
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 20 }}
-        className="bg-white rounded-xl w-full max-w-full sm:max-w-2xl shadow-2xl"
+        className="bg-white rounded-xl w-full max-w-full sm:max-w-2xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-yellow-600 text-white px-4 py-3 flex justify-between items-center rounded-t-xl">
-          <h2 className="text-xl font-bold flex items-center gap-2">
+        <div className="bg-yellow-600 text-white px-4 py-3 flex justify-between items-center rounded-t-xl flex-shrink-0">
+          <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
             ⚠️ Pending Forfeit Approval
           </h2>
           <button
@@ -170,19 +170,21 @@ export default function PendingWalkoverModal({ walkover, onClose, onUpdate }) {
           </button>
         </div>
 
-        {success && (
-          <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
-            ✓ Forfeit processed successfully!
-          </div>
-        )}
+        {/* ── Scrollable Body ── */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
 
-        {error && (
-          <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-medium">
-            ✕ {error}
-          </div>
-        )}
+          {success && (
+            <div className="mx-6 mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
+              ✓ Forfeit processed successfully!
+            </div>
+          )}
 
-        <div className="p-4 space-y-4">
+          {error && (
+            <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-medium">
+              ✕ {error}
+            </div>
+          )}
+
           {/* Walkover Details */}
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-2">
             <div className="flex justify-between items-start gap-3">
@@ -292,18 +294,18 @@ export default function PendingWalkoverModal({ walkover, onClose, onUpdate }) {
                     </button>
                   </div>
                 </div>
-                  ) : action === "approve" ? (
+              ) : action === "approve" ? (
                 <div className="space-y-4">
                   <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
                     <p className="text-sm font-bold text-green-800">
                       ✓ Approve Forfeit
                     </p>
                     <p className="text-xs text-green-700 mt-1">
-                      {winnerName} is proposed to receive {displayedScore} (based on league walkover rule: {walkoverRule === 'autoBestOf' ? 'Best of ' + (parseInt(matchRules.bestOf || matchRules.customFrames) || 5) : 
-                        walkoverRule === 'auto2-0' ? '2-0' : 
-                        walkoverRule === 'auto5-0' ? '5-0' : 
-                        walkoverRule === 'custom' ? 'Custom ' + (matchRules.walkover?.customScore || '3-0') :
-                        walkoverRule === 'admin' ? 'Admin decides' : 'Default'}). 
+                      {winnerName} is proposed to receive {displayedScore} (based on league walkover rule: {walkoverRule === 'autoBestOf' ? 'Best of ' + (parseInt(matchRules.bestOf || matchRules.customFrames) || 5) :
+                        walkoverRule === 'auto2-0' ? '2-0' :
+                          walkoverRule === 'auto5-0' ? '5-0' :
+                            walkoverRule === 'custom' ? 'Custom ' + (matchRules.walkover?.customScore || '3-0') :
+                              walkoverRule === 'admin' ? 'Admin decides' : 'Default'}).
                       {(walkoverRule === 'custom' || walkoverRule === 'admin') ? 'You can override the score before approval.' : 'Score is fixed by league rule.'}
                     </p>
                   </div>

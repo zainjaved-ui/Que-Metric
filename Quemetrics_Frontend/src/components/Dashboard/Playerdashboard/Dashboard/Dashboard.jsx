@@ -327,10 +327,9 @@ const RecentMatchesCard = ({ recentMatches = [], recentWalkovers = [] }) => {
         <div className="space-y-2">
           {allEntries.map((m, i) => (
             <div key={m.id || i} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-[#FDF2D1]/20 transition-colors">
-              <span className={`shrink-0 px-2 py-0.5 rounded text-[7px] font-black uppercase ${
-                m.isWalkover ? 'bg-gray-100 text-gray-500' :
-                m.result === 'win' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
-              }`}>
+              <span className={`shrink-0 px-2 py-0.5 rounded text-[7px] font-black uppercase ${m.isWalkover ? 'bg-gray-100 text-gray-500' :
+                  m.result === 'win' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                }`}>
                 {m.isWalkover ? 'W/O' : m.result === 'win' ? 'Won' : 'Lost'}
               </span>
               <div className="flex-1 min-w-0">
@@ -340,10 +339,9 @@ const RecentMatchesCard = ({ recentMatches = [], recentWalkovers = [] }) => {
                   {m.date ? ` · ${new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}` : ''}
                 </p>
               </div>
-              <span className={`text-[9px] font-black ${
-                m.isWalkover ? 'text-gray-400' :
-                m.result === 'win' ? 'text-green-600' : 'text-red-500'
-              }`}>
+              <span className={`text-[9px] font-black ${m.isWalkover ? 'text-gray-400' :
+                  m.result === 'win' ? 'text-green-600' : 'text-red-500'
+                }`}>
                 {m.score || (m.isWalkover ? 'W/O' : '-')}
               </span>
             </div>
@@ -482,6 +480,8 @@ const MatchRow = ({ match }) => {
   const dateStr = match.date ? new Date(match.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'TBA';
   const timeStr = match.startTime || 'TBA';
 
+  const isConfirmed = !!match.date && match.startTime !== 'TBA';
+
   return (
     <div className="flex items-center justify-between p-4 rounded-2xl bg-[#FDF2D1]/20 border border-[#FDF2D1]">
       <div className="min-w-0">
@@ -490,7 +490,11 @@ const MatchRow = ({ match }) => {
           {dateStr === 'TBA' ? 'TBA' : `${dateStr} \u00B7 ${timeStr}`}
         </p>
       </div>
-      <Link to="/player/uploadscore" className="text-[8px] font-black bg-[#132F45] text-white px-4 py-2 rounded-xl uppercase tracking-widest hover:bg-[#1c4566] transition-all">Report</Link>
+      {isConfirmed ? (
+        <Link to="/player/uploadscore" className="text-[8px] font-black bg-[#132F45] text-white px-4 py-2 rounded-xl uppercase tracking-widest hover:bg-[#1c4566] transition-all">Report</Link>
+      ) : (
+        <span title="Booking not confirmed yet" className="text-[8px] font-black bg-gray-300 text-gray-500 px-4 py-2 rounded-xl uppercase tracking-widest cursor-not-allowed select-none">Report</span>
+      )}
     </div>
   );
 };

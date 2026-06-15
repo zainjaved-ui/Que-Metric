@@ -32,14 +32,14 @@ const sportLabelMap = {
   snooker: 'Snooker',
   pool: 'Pool',
   pooker: 'Pooker',
-  pooker: 'Pooker',
+  
 };
 
 const sportIconMap = {
   snooker: FaBullseye,
   pool: FaCircle,
   pooker: FaDice,
-  pooker: FaDice,
+ 
 };
 
 const getSportKey = (value) => String(value || '').toLowerCase();
