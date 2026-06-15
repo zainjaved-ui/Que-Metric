@@ -1563,14 +1563,14 @@ async function generateFixturesForLeague(leagueId, divisionId = null, options = 
           association: 'players',
           where: { approvalStatus: 'approved' },
           required: false,
-          include: [{ association: 'player', attributes: ['id', 'ranking'] }]
+          include: [{ association: 'player', attributes: ['id'] }]
         }]
       },
       {
         association: 'leaguePlayers',
         where: { approvalStatus: 'approved' },
         required: false, // Don't fail if no players are approved yet
-        include: [{ association: 'player', attributes: ['id', 'ranking'] }]
+        include: [{ association: 'player', attributes: ['id'] }]
       }
     ]
   });
