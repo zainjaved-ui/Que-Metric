@@ -89,12 +89,7 @@ const DashboardLayout = () => {
       label: 'Tournament Match Management',
       path: `/organization/tournamentmatchmanagement`
     },
-    {
-      key: 'League-Stats',
-      icon: <FaChartBar className="h-5 w-5" />,
-      label: 'League Stats',
-      path: `/organization/leaguestats`
-    },
+  
     {
       key: 'honors',
       icon: <FaMedal className="h-5 w-5" />,

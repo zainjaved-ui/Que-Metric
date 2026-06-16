@@ -175,18 +175,27 @@ async function handlePlayerWithdrawalFromFixtures(leagueId, playerId, dropoutRul
             leagueId,
             [Op.or]: [{ player1Id: playerId }, { player2Id: playerId }],
             status: { [Op.in]: ['scheduled', 'in_progress'] }
-        }
+        },
+        order: [['round', 'ASC']]
     });
 
     const league = await League.findByPk(leagueId);
     if (!league) return;
 
+    // Detect league format for stage-specific handling
+    let structure = league.structure || {};
+    if (typeof structure === 'string') {
+        try { structure = JSON.parse(structure); } catch (e) { structure = {}; }
+    }
+    const format = (structure.format || league.format || '').toLowerCase();
+    const isSwiss = format === 'swiss';
+
     for (const fixture of fixtures) {
-        const isPlayer1 = fixture.player1Id === playerId;
+        const isPlayer1 = String(fixture.player1Id) === String(playerId);
         const opponentId = isPlayer1 ? fixture.player2Id : fixture.player1Id;
 
         if (opponentId) {
-            // Mark as bye and set opponent as winner
+            // Opponent exists — grant them a walkover bye
             await fixture.update({
                 status: 'bye',
                 winnerId: opponentId,
@@ -200,7 +209,7 @@ async function handlePlayerWithdrawalFromFixtures(leagueId, playerId, dropoutRul
                     leagueId,
                     matchType: 'league',
                     sport: league.sport,
-                    submittedBy: opponentId, // Fix: submittedBy cannot be null
+                    submittedBy: opponentId,
                     player1Id: fixture.player1Id,
                     player2Id: fixture.player2Id,
                     winnerId: opponentId,
@@ -211,39 +220,81 @@ async function handlePlayerWithdrawalFromFixtures(leagueId, playerId, dropoutRul
             });
 
             // If it's a knockout stage, advance the opponent to the next round
-            if (fixture.stage === 'knockout') {
-                await advanceKnockoutWinner(fixture);
+            if (fixture.stage === 'knockout' || fixture.stage === 'groupsKnockout') {
+                const { advanceKnockoutWinner } = require('./fixtureGenerator');
+                await advanceKnockoutWinner(fixture.id, opponentId);
             }
+
+            // For Swiss: if this is a future round (not yet started), the opponent now has a lone BYE.
+            // We keep it as-is (bye granted). The next Swiss round pairing will exclude the withdrawn player.
+
         } else {
-            // No opponent (e.g., already a bye or placeholder), just cancel
-            await fixture.update({ status: 'cancelled' });
+            // No opponent set yet (withdrew before being paired, or is a lone BYE slot)
+            if (fixture.stage === 'swiss' || isSwiss) {
+                // Simply null out the withdrawn player's slot and cancel the fixture.
+                // The next Swiss round gen will re-pair the remaining players correctly.
+                await fixture.update({
+                    player1Id: null,
+                    player2Id: null,
+                    status: 'cancelled',
+                    loserId: playerId,
+                    winnerId: null
+                });
+                console.log(`[handlePlayerWithdrawalFromFixtures] Swiss: Cancelled unpaired fixture ${fixture.id} for withdrawn player ${playerId}`);
+            } else {
+                // Non-swiss: strip any stale BYE win, mark player as loser for future auto-advance
+                const updates = { loserId: playerId };
+                if (String(fixture.winnerId) === String(playerId) && fixture.status === 'bye') {
+                    updates.status = 'cancelled';
+                    updates.winnerId = null;
+                }
+                await fixture.update(updates);
+            }
+        }
+    }
+
+    // SWISS SPECIFIC: Also check for future Swiss rounds where this player was already pre-paired
+    // (i.e., the fixture was 'scheduled' with both players set but not started yet - handled above)
+    // Additionally handle any 'upcoming' fixture stubs that only have them in a slot (player2Id/player1Id = withdrawn)
+    if (isSwiss) {
+        // Find any remaining future Swiss match stubs we missed (e.g. empty/null opponent slots)
+        // where the player sits in player1 or player2 slot
+        const futureSwissStubs = await Fixture.findAll({
+            where: {
+                leagueId,
+                stage: 'swiss',
+                status: { [Op.in]: ['scheduled', 'in_progress'] },
+                [Op.or]: [{ player1Id: playerId }, { player2Id: playerId }]
+            }
+        });
+
+        for (const stub of futureSwissStubs) {
+            const opId = String(stub.player1Id) === String(playerId) ? stub.player2Id : stub.player1Id;
+            if (opId) {
+                // Opponent exists — give them a bye
+                await stub.update({ status: 'bye', winnerId: opId, loserId: playerId });
+                await MatchResult.findOrCreate({
+                    where: { fixtureId: stub.id },
+                    defaults: {
+                        leagueId,
+                        matchType: 'league',
+                        sport: league.sport,
+                        submittedBy: opId,
+                        player1Id: stub.player1Id,
+                        player2Id: stub.player2Id,
+                        winnerId: opId,
+                        isWalkover: true,
+                        resultStatus: 'Confirmed',
+                        notes: JSON.stringify({ isWalkover: true, withdrawalRule: dropoutRule, reason: 'Automated bye due to player withdrawal in Swiss round.' })
+                    }
+                });
+                console.log(`[handlePlayerWithdrawalFromFixtures] Swiss stub: Bye granted to ${opId} in fixture ${stub.id}`);
+            } else {
+                // No opponent — cancel the unpaired Swiss stub
+                await stub.update({ status: 'cancelled', player1Id: null, player2Id: null, winnerId: null, loserId: playerId });
+                console.log(`[handlePlayerWithdrawalFromFixtures] Swiss stub: Cancelled unpaired fixture ${stub.id}`);
+            }
         }
     }
 }
 
-/**
- * Propagates a winner to the next round in a knockout bracket.
- */
-async function advanceKnockoutWinner(fixture) {
-    if (!fixture.winnerId) return;
-
-    const nextR = (fixture.round || 1) + 1;
-    const nextIdx = Math.floor(fixture.matchIndex / 2);
-    const isP1 = fixture.matchIndex % 2 === 0;
-
-    const { Fixture } = require('../models');
-    const target = await Fixture.findOne({
-        where: {
-            leagueId: fixture.leagueId,
-            round: nextR,
-            matchIndex: nextIdx,
-            divisionId: fixture.divisionId,
-            stage: 'knockout'
-        }
-    });
-
-    if (target) {
-        if (isP1) await target.update({ player1Id: fixture.winnerId });
-        else await target.update({ player2Id: fixture.winnerId });
-    }
-}

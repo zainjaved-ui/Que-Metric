@@ -224,10 +224,10 @@ const transformFixturesToMatches = (fixtures, divisionId, league, divisions) => 
     const s1 = Number(sportName === 'pool' || sportName === 'pooker' ? (fixture.player1RackWins ?? fixture.player1Frames) : fixture.player1Frames) || 0;
     const s2 = Number(sportName === 'pool' || sportName === 'pooker' ? (fixture.player2RackWins ?? fixture.player2Frames) : fixture.player2Frames) || 0;
     const scoresEqual = s1 === s2 && s1 > 0;
-    
+
     // It's only a DRAW if scores are equal, NO winner ID, and it's not a KO pool/pooker with auto-decided winner
     const isDraw = !isWalkover && fixture.status === 'completed' && scoresEqual && !resolvedWinnerId;
-    
+
     // Check if this is an auto-resolved knockout draw (has winnerId but scores are equal)
     const isAutoResolvedKODraw = isKnockoutPoolPooker && scoresEqual && resolvedWinnerId;
 
@@ -363,11 +363,11 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
   // Get winner name if auto-resolved
   const getWinnerStatus = () => {
     if (!isAutoResolvedDraw) return null;
-    
+
     const winnerId = match.winnerId;
     const player1Id = match.player1?.id || match.additionalData?.player1Id;
     const player2Id = match.player2?.id || match.additionalData?.player2Id;
-    
+
     if (String(winnerId) === String(player1Id)) {
       return `${match.homeTeam} WINS`;
     } else if (String(winnerId) === String(player2Id)) {
@@ -452,12 +452,12 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
               </div>
               <div className={`mt-2 text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border ${match.detailedStatus === 'WALKOVER' ? 'bg-orange-50 text-orange-600 border-orange-100 shadow-sm shadow-orange-100' :
                 match.detailedStatus === 'AUTO-RESOLVED DRAW' ? 'bg-green-50 text-green-600 border-green-100 shadow-sm shadow-green-100' :
-                match.detailedStatus === 'PENDING APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
-                  match.detailedStatus === 'FORFEIT' ? 'bg-red-50 text-red-600 border-red-100 shadow-sm shadow-red-100' :
-                    match.detailedStatus === 'DRAW' ? 'bg-teal-50 text-teal-600 border-teal-100 shadow-sm shadow-teal-100' :
-                      match.detailedStatus === 'WHITEWASH' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm shadow-indigo-100' :
-                        match.detailedStatus === 'TIE-BREAK' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
-                          'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'
+                  match.detailedStatus === 'PENDING APPROVAL' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
+                    match.detailedStatus === 'FORFEIT' ? 'bg-red-50 text-red-600 border-red-100 shadow-sm shadow-red-100' :
+                      match.detailedStatus === 'DRAW' ? 'bg-teal-50 text-teal-600 border-teal-100 shadow-sm shadow-teal-100' :
+                        match.detailedStatus === 'WHITEWASH' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm shadow-indigo-100' :
+                          match.detailedStatus === 'TIE-BREAK' ? 'bg-amber-50 text-amber-600 border-amber-100 shadow-sm shadow-amber-100' :
+                            'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100'
                 }`}>
                 {isAutoResolvedDraw ? getWinnerStatus() : (match.detailedStatus || 'COMPLETE')}
               </div>
@@ -479,7 +479,7 @@ const FixtureCard = ({ match, onViewDetails, canEditFixtures, canEditResults, on
                   BYE
                 </div>
               )}
-              {match.detailedStatus && match.detailedStatus !== 'SCHEDULED' && !match.isWalkover && (
+              {match.detailedStatus && match.detailedStatus !== 'SCHEDULED' && match.detailedStatus !== 'BYE' && !match.isWalkover && (
                 <div className={`text-[8px] font-black uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-lg border ${match.detailedStatus === 'READY TO PLAY' ? 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm shadow-blue-100' :
                   match.detailedStatus === 'ONGOING' ? 'bg-yellow-50 text-yellow-600 border-yellow-100 shadow-sm shadow-yellow-100' :
                     isBye ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-sm shadow-emerald-100' :
@@ -1232,7 +1232,7 @@ export default function LeagueMatches() {
         }
 
         setSelectedDivision(null);
-        
+
         // Trigger standings refresh after updating fixtures
         setStandingsRefreshCounter(prev => prev + 1);
 
@@ -3217,14 +3217,14 @@ export default function LeagueMatches() {
                               <span className="font-black tracking-tight text-emerald-600">{selectedLeague.pointsSystem.bonuses.participationValue || 1} pts</span>
                             </div>
                           )}
-                          
+
                           {selectedLeague.pointsSystem.bonuses.whitewash && (
                             <div className="flex justify-between items-center text-sm bg-amber-50 rounded-lg p-3">
                               <span className="text-slate-600 font-medium">Whitewash Win</span>
                               <span className="font-black tracking-tight text-amber-600">{selectedLeague.pointsSystem.bonuses.whitewashPoints || 1} pts</span>
                             </div>
                           )}
-                          
+
                           {selectedLeague.pointsSystem.bonuses.breakOverX && (
                             <div className="flex justify-between items-center text-sm bg-indigo-50 rounded-lg p-3">
                               <span className="text-slate-600 font-medium">Break over {selectedLeague.pointsSystem.bonuses.breakValue || 50}</span>
@@ -3232,11 +3232,11 @@ export default function LeagueMatches() {
                             </div>
                           )}
 
-                          {!selectedLeague.pointsSystem.bonuses.participation && 
-                           !selectedLeague.pointsSystem.bonuses.whitewash && 
-                           !selectedLeague.pointsSystem.bonuses.breakOverX && (
-                            <div className="text-sm text-slate-400 italic">No bonuses enabled</div>
-                          )}
+                          {!selectedLeague.pointsSystem.bonuses.participation &&
+                            !selectedLeague.pointsSystem.bonuses.whitewash &&
+                            !selectedLeague.pointsSystem.bonuses.breakOverX && (
+                              <div className="text-sm text-slate-400 italic">No bonuses enabled</div>
+                            )}
                         </div>
                       </div>
                     )}

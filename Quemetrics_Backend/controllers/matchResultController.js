@@ -2363,6 +2363,47 @@ exports.submitMatchResult = async (req, res) => {
       // Update booking status to "completed"
       await booking.update({ status: "completed" }, { transaction });
 
+      // FIXTURE UPDATE: If not a walkover (walkovers handled above), update the fixture
+      if (booking.fixtureId && !isWalkover) {
+        const fixture = await Fixture.findByPk(booking.fixtureId, { transaction });
+        if (fixture) {
+          const updateData = {
+            status: "completed",
+            winnerId: matchResult.winnerId,
+            loserId: matchResult.winnerId === matchResult.player1Id ? matchResult.player2Id : matchResult.player1Id,
+          };
+
+          if (matchResult.sport === "snooker") {
+            updateData.player1Frames = matchResult.player1Frames;
+            updateData.player2Frames = matchResult.player2Frames;
+            updateData.resultData = matchResult.snookerFrameDetails;
+          } else if (matchResult.sport === "pool") {
+            updateData.player1RackWins = matchResult.player1RackWins;
+            updateData.player2RackWins = matchResult.player2RackWins;
+            updateData.resultData = matchResult.poolRackDetails;
+          } else if (matchResult.sport === "pooker") {
+            updateData.player1Frames = matchResult.player1Frames;
+            updateData.player2Frames = matchResult.player2Frames;
+            updateData.player1RackWins = matchResult.player1Frames;
+            updateData.player2RackWins = matchResult.player2Frames;
+            updateData.resultData = matchResult.pookerFrameDetails;
+          }
+
+          await fixture.update(updateData, { transaction });
+        }
+      }
+
+      // SYNC TOURNAMENT MATCH (for bracket/knockout formats)
+      if (matchType === "tournament" || booking.tournamentMatchId) {
+        await syncTournamentMatchCompletion({
+          tournamentId: matchResult.tournamentId || booking.tournamentId,
+          player1Id: matchResult.player1Id,
+          player2Id: matchResult.player2Id,
+          matchResult,
+          transaction,
+        });
+      }
+
       // Finalize player badges (Casual -> Verified)
       if (matchType === "league" && booking.leagueId) {
         const player1 = await Player.findByPk(booking.playerId, { transaction });
