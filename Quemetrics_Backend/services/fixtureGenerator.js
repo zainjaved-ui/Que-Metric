@@ -455,11 +455,19 @@ async function generateKnockoutFixtures(league, structure, divisions) {
 
   if (divisions && divisions.length > 0) {
     for (const division of divisions) {
-      const playerIds = (division.players || []).map(p => p.player?.id || p.id).filter(id => !!id);
+      // CRITICAL FIX: Skip withdrawn/rejected players to prevent them from entering bounds
+      const playerIds = (division.players || [])
+        .filter(p => !['withdrawn', 'rejected'].includes(p.approvalStatus) && !['withdrawn', 'rejected'].includes(p.status))
+        .map(p => p.player?.id || p.id)
+        .filter(id => !!id);
       processDivision(playerIds, division.id);
     }
   } else {
-    const allPlayers = (league.leaguePlayers || []).map(lp => lp.player?.id).filter(id => !!id);
+    // CRITICAL FIX: Skip withdrawn/rejected players
+    const allPlayers = (league.leaguePlayers || [])
+      .filter(lp => !['withdrawn', 'rejected'].includes(lp.approvalStatus) && !['withdrawn', 'rejected'].includes(lp.status))
+      .map(lp => lp.player?.id)
+      .filter(id => !!id);
     processDivision(allPlayers, null);
   }
 
@@ -573,9 +581,12 @@ async function calculateSwissStandings(leagueId, currentRound, tieBreakMethod = 
   if (divisionId) whereClause.divisionId = divisionId;
 
   const leaguePlayers = await LeaguePlayer.findAll({
-    where: whereClause,
+    where: { ...whereClause },
     include: [{ association: 'player', attributes: ['id', 'name', 'nickname'] }]
   });
+
+  // CRITICAL FIX: Exclude withdrawn players from Swiss standings/pairing pool
+  const activePlayers = leaguePlayers.filter(lp => !['withdrawn', 'rejected'].includes(lp.status) && !['withdrawn', 'rejected'].includes(lp.approvalStatus));
 
   // Get all completed fixtures up to current round
   const fixtures = await Fixture.findAll({
@@ -591,8 +602,8 @@ async function calculateSwissStandings(leagueId, currentRound, tieBreakMethod = 
     ]
   });
 
-  // Calculate standings for each player
-  const standings = leaguePlayers.map(lp => {
+  // Calculate standings for each ACTIVE player (withdrawn excluded above)
+  const standings = activePlayers.map(lp => {
     const playerId = lp.playerId;
     const playerFixtures = fixtures.filter(f =>
       f.player1Id === playerId || f.player2Id === playerId
@@ -913,10 +924,19 @@ async function generateNextSwissRound(leagueId, nextRound, tieBreakMethod = 'buc
     }
   }
 
-  // Handle any remaining fixtures (shouldn't happen if counts match)
+  // Handle any remaining fixtures — these are EXCESS slots left from withdrawn players.
+  // Cancel them so they don't appear as ghost TBD matches.
   if (roundFixtures.length > pairedPlayers.length) {
-    console.warn(`[generateNextSwissRound] WARNING: More fixtures (${roundFixtures.length}) than pairings (${pairedPlayers.length}). This shouldn't happen.`);
+    console.warn(`[generateNextSwissRound] ${roundFixtures.length - pairedPlayers.length} excess fixture slot(s) for round ${nextRound} — cancelling them (withdrawn player(s) reduced matchcount).`);
+    for (let i = pairedPlayers.length; i < roundFixtures.length; i++) {
+      const extra = roundFixtures[i];
+      if (extra && extra.status !== 'bye' && extra.status !== 'completed') {
+        await extra.update({ status: 'cancelled', player1Id: null, player2Id: null, winnerId: null });
+        console.log(`[generateNextSwissRound] Cancelled excess fixture ${extra.id} (R${nextRound}, slot ${i})`);
+      }
+    }
   }
+
 
   // Notify qualified players for next round
   const league = await League.findByPk(leagueId);
@@ -1213,15 +1233,43 @@ async function advanceKnockoutWinner(fixtureId, winnerId) {
     const refreshed = await Fixture.findByPk(targetFixture.id);
 
     // If this fixture is a BYE (one player, no real opponent), auto-advance immediately
-    if (refreshed.status === 'bye') {
+    if (refreshed.status === 'bye' && (!refreshed.player1Id || !refreshed.player2Id)) {
       const byeWinnerId = refreshed.player1Id || refreshed.player2Id;
       if (byeWinnerId) {
         await refreshed.update({ winnerId: byeWinnerId, status: 'bye' });
         await advanceKnockoutWinner(refreshed.id, byeWinnerId);
       }
+      return;
     }
+
+    // CRITICAL FIX: Direct DB check for withdrawn players to bulletproof against stale/corrupt data
+    const { LeaguePlayer } = require('../models');
+    const lp1 = refreshed.player1Id ? await LeaguePlayer.findOne({ where: { leagueId: refreshed.leagueId, playerId: refreshed.player1Id } }) : null;
+    const lp2 = refreshed.player2Id ? await LeaguePlayer.findOne({ where: { leagueId: refreshed.leagueId, playerId: refreshed.player2Id } }) : null;
+
+    const withdrawnP1 = lp1?.status === 'withdrawn';
+    const withdrawnP2 = lp2?.status === 'withdrawn';
+
+    // If both slots are now filled, evaluate walkovers immediately
+    if (refreshed.player1Id && refreshed.player2Id) {
+      if (withdrawnP1 && !withdrawnP2) {
+        await refreshed.update({ winnerId: refreshed.player2Id, loserId: refreshed.player1Id, status: 'bye' });
+        await advanceKnockoutWinner(refreshed.id, refreshed.player2Id);
+        return;
+      } else if (withdrawnP2 && !withdrawnP1) {
+        await refreshed.update({ winnerId: refreshed.player1Id, loserId: refreshed.player2Id, status: 'bye' });
+        await advanceKnockoutWinner(refreshed.id, refreshed.player1Id);
+        return;
+      } else if ((refreshed.loserId && !withdrawnP1 && !withdrawnP2)) {
+        const actualWinnerId = String(refreshed.player1Id) === String(refreshed.loserId) ? refreshed.player2Id : refreshed.player1Id;
+        await refreshed.update({ winnerId: actualWinnerId, status: 'bye' });
+        await advanceKnockoutWinner(refreshed.id, actualWinnerId);
+        return;
+      }
+    }
+
     // If one slot was already filled and is now complete (both players present and other slot is null/bye), auto-advance
-    else if (refreshed.player1Id && !refreshed.player2Id) {
+    if (refreshed.player1Id && !refreshed.player2Id) {
       // Check if this is a BYE because no second player will ever come
       // We detect this by checking if the sibling match (the match that fills p2) is also a bye
       const siblingMatchIndex = isPlayer1Slot ? currentFixture.matchIndex + 1 : currentFixture.matchIndex - 1;

@@ -1507,7 +1507,7 @@ exports.generateInvitationLink = async (req, res) => {
     await club.save();
 
     // Generate invitation URL (adjust base URL as needed)
-    const invitationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/club/join/${invitationToken}`;
+    const invitationUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/club/join/${invitationToken}`;
 
     // Get join code
     const joinCode = joinSettings.joinCode;
