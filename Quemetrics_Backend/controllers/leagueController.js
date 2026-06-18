@@ -3244,11 +3244,26 @@ exports.getWizardClubs = async (req, res) => {
       return res.status(404).json({ success: false, error: "Organization not found" });
     }
 
-    const { Club } = require("../models");
+    const { Club, Season, Game } = require("../models");
     const clubs = await Club.findAll({
       where: { organizationId: organization.id, status: "active" },
       attributes: ["id", "name", "venues", "sportTypes"],
     });
+
+    // Determine which games have active seasons
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const activeSeasons = await Season.findAll({
+      where: {
+        organizationId: organization.id,
+        status: { [Op.ne]: "completed" },
+        endDate: { [Op.gte]: today }
+      },
+      include: [{ model: Game, as: "game", attributes: ["name"] }]
+    });
+
+    const activeGames = [...new Set(activeSeasons.map(s => s.game?.name).filter(Boolean))];
 
     // Transform to match frontend format
     const clubsData = clubs.map((club) => ({
@@ -3261,6 +3276,7 @@ exports.getWizardClubs = async (req, res) => {
     res.json({
       success: true,
       data: clubsData,
+      activeGames,
     });
   } catch (error) {
     console.error("getWizardClubs error:", error);
@@ -3289,9 +3305,13 @@ exports.getGameSeasons = async (req, res) => {
 
     const normalizedGameName = String(gameName || "").trim().toLowerCase();
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const seasonWhere = {
       organizationId: organization.id,
-      status: "active",
+      status: { [Op.ne]: "completed" },
+      endDate: { [Op.gte]: today },
     };
 
     const seasonQuery = {

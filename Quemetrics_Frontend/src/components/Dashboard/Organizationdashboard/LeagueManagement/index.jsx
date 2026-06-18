@@ -1003,6 +1003,7 @@ const StepOneModal = ({ onClose, onLeagueCreated }) => {
   const [availableVenues, setAvailableVenues] = useState([]);
   const [allVenuesWithApproval, setAllVenuesWithApproval] = useState([]);
   const [availableGames, setAvailableGames] = useState([]);
+  const [activeGamesList, setActiveGamesList] = useState([]);
   const [availableSeasons, setAvailableSeasons] = useState([]);
   const [newVenueInput, setNewVenueInput] = useState('');
   const [selectedVenue, setSelectedVenue] = useState('');
@@ -1033,6 +1034,9 @@ const StepOneModal = ({ onClose, onLeagueCreated }) => {
       if (result.success) {
         const clubsData = result.data || [];
         setClubs(clubsData);
+        if (result.activeGames) {
+          setActiveGamesList(result.activeGames);
+        }
         return clubsData;
       }
       return [];
@@ -1463,9 +1467,19 @@ const StepOneModal = ({ onClose, onLeagueCreated }) => {
                   className="w-full border rounded p-2"
                 >
                   <option value="">Select a game</option>
-                  {availableGames.map(game => (
-                    <option key={game} value={game}>{game}</option>
-                  ))}
+                  {availableGames.map(game => {
+                    const hasActiveSeason = activeGamesList.includes(game);
+                    return (
+                      <option
+                        key={game}
+                        value={game}
+                        disabled={!hasActiveSeason}
+                        className={!hasActiveSeason ? "text-gray-400 bg-gray-50" : ""}
+                      >
+                        {game} {!hasActiveSeason && "(No active season)"}
+                      </option>
+                    );
+                  })}
                 </select>
                 {errors.game && <p className="text-red-500 text-sm">{errors.game}</p>}
               </div>
