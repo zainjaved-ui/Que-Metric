@@ -380,7 +380,7 @@ export function LeagueProvider({ children }) {
     setGlobalLoading('wizard', true);
     try {
       const { data } = await apiClient.get('/leagues/wizard/clubs');
-      return { success: true, data: data.data };
+      return { success: true, data: data.data, activeGames: data.activeGames || [] };
     } catch (error) {
       return { success: false, error: error.response?.data?.error };
     } finally {
